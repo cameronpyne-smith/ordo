@@ -5,11 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=%i
-ExecStart=/opt/ordo/ordo serve
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/ordo
+ExecStart=/home/YOUR_USER/ordo/ordo serve
 Restart=on-failure
 RestartSec=5
-StateDirectory=ordo
 
 [Install]
 WantedBy=multi-user.target

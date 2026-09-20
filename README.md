@@ -74,11 +74,23 @@ within a tier, then oldest first. No ordering an LLM produced is ever stored.
 The repo is cloned on the box and built there.
 
 ```sh
-git pull && go build -o ordo ./cmd/ordo && sudo systemctl restart ordo
+git pull && go build -o ordo ./cmd/ordo && ./ordo serve
 ```
 
-`deploy/ordo.service` is a starting point; set `User` and `ExecStart` to match
-the box.
+To have it survive a reboot, `deploy/ordo.service` is a starting point.
+Replace `YOUR_USER` throughout: the daemon must run as the account whose
+config file holds the token, since the daemon and the CLI read the same
+`config.toml`.
+
+```sh
+sudo cp deploy/ordo.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ordo
+journalctl -u ordo -f
+```
+
+With the unit installed, an update is `git pull`, `go build`, then
+`sudo systemctl restart ordo`.
 
 ## Layout
 
