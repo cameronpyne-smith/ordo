@@ -52,6 +52,7 @@ func newListCmd(configPath *string) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "list every task regardless of status")
 	cmd.Flags().BoolVar(&f.Overdue, "overdue", false, "only tasks past their due date")
 	cmd.Flags().BoolVar(&f.Linked, "linked", false, "only tasks linked to a mnemo note")
+	cmd.Flags().BoolVar(&f.Recurring, "recurring", false, "only tasks that repeat")
 	cmd.Flags().StringVar(&f.Difficulty, "difficulty", "", "low, medium or high")
 	cmd.Flags().StringVar(&f.Priority, "priority", "", "low, normal or high")
 	cmd.Flags().IntVar(&f.Limit, "limit", 0, "show at most this many")
@@ -60,12 +61,21 @@ func newListCmd(configPath *string) *cobra.Command {
 
 func newAddCmd(configPath *string) *cobra.Command {
 	var req api.CreateRequest
+	var every, after string
 
 	cmd := &cobra.Command{
 		Use:   "add <title...>",
 		Short: "Add a task",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			switch {
+			case every != "" && after != "":
+				return fmt.Errorf("a task repeats on a schedule or after an interval, not both")
+			case every != "":
+				req.RecurKind, req.RecurRule = string(store.RecurEvery), every
+			case after != "":
+				req.RecurKind, req.RecurRule = string(store.RecurAfter), after
+			}
 			c, err := newClient(*configPath)
 			if err != nil {
 				return err
@@ -75,7 +85,7 @@ func newAddCmd(configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "added %d: %s\n", t.ID, t.Title)
+			fmt.Fprintf(cmd.OutOrStdout(), "added %d: %s%s\n", t.ID, t.Title, dueSuffix(t))
 			return nil
 		},
 	}
@@ -84,6 +94,8 @@ func newAddCmd(configPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&req.Difficulty, "difficulty", "", "low, medium or high")
 	cmd.Flags().StringVar(&req.Priority, "priority", "", "low, normal or high")
 	cmd.Flags().IntVar(&req.EstimateMinutes, "estimate", 0, "estimated minutes")
+	cmd.Flags().StringVar(&every, "every", "", `repeat on a schedule: daily, "weekly on tue", "weekly on mon,thu", "monthly on 1", "monthly on last", "yearly on 03-15"`)
+	cmd.Flags().StringVar(&after, "after", "", "repeat an interval after each completion: 3d, 2w, 1m")
 	return cmd
 }
 
@@ -107,6 +119,10 @@ func newDoneCmd(configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if t.Recur != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s (next due %s)\n", t.ID, t.Title, t.Due)
+				return nil
+			}
 			fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s\n", t.ID, t.Title)
 			return nil
 		},
@@ -119,8 +135,9 @@ func newSetCmd(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <id> <key=value>...",
 		Short: "Change fields on a task; an empty value clears one",
-		Long: "Change fields on a task. Keys: title, notes, status, difficulty, priority, due, estimate.\n" +
-			"An empty value clears the field, for example due=.",
+		Long: "Change fields on a task. Keys: title, notes, status, difficulty, priority, due,\n" +
+			"estimate, every, after.\n" +
+			"An empty value clears the field, for example due= or every=.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -290,6 +307,12 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 			req.Priority = &value
 		case "due":
 			req.Due = &value
+		case "every", "after":
+			kind := key
+			if value == "" {
+				kind = ""
+			}
+			req.RecurKind, req.RecurRule = &kind, &value
 		case "estimate", "estimate_minutes":
 			minutes := 0
 			if value != "" {
@@ -301,7 +324,7 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 			}
 			req.EstimateMinutes = &minutes
 		default:
-			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due or estimate", key)
+			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due, estimate, every or after", key)
 		}
 	}
 	return req, nil
@@ -312,13 +335,47 @@ func printTasks(w io.Writer, tasks []api.Task) {
 		fmt.Fprintln(w, "no tasks")
 		return
 	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tDUE\tPRIORITY\tDIFFICULTY\tTITLE")
+	// The repeats column only earns its width when something in view repeats.
+	repeats := false
 	for _, t := range tasks {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n",
-			t.ID, dueCell(t), dash(t.Priority), dash(t.Difficulty), titleCell(t))
+		if t.Recur != nil {
+			repeats = true
+			break
+		}
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	header := "ID\tDUE\tPRIORITY\tDIFFICULTY\t"
+	if repeats {
+		header += "REPEATS\t"
+	}
+	fmt.Fprintln(tw, header+"TITLE")
+	for _, t := range tasks {
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t", t.ID, dueCell(t), dash(t.Priority), dash(t.Difficulty))
+		if repeats {
+			fmt.Fprintf(tw, "%s\t", recurCell(t))
+		}
+		fmt.Fprintln(tw, titleCell(t))
 	}
 	tw.Flush()
+}
+
+// recurCell reads as the rule itself for a schedule, since "weekly on tue"
+// already says what it means; an interval needs the word to disambiguate.
+func recurCell(t api.Task) string {
+	if t.Recur == nil {
+		return "-"
+	}
+	if t.Recur.Kind == string(store.RecurAfter) {
+		return "after " + t.Recur.Rule
+	}
+	return t.Recur.Rule
+}
+
+func dueSuffix(t *api.Task) string {
+	if t.Due == "" {
+		return ""
+	}
+	return " (due " + t.Due + ")"
 }
 
 func dueCell(t api.Task) string {

@@ -37,6 +37,8 @@ type CreateRequest struct {
 	Priority        string `json:"priority,omitempty"`
 	EstimateMinutes int    `json:"estimate_minutes,omitempty"`
 	Due             string `json:"due,omitempty"`
+	RecurKind       string `json:"recur_kind,omitempty"`
+	RecurRule       string `json:"recur_rule,omitempty"`
 }
 
 // EditRequest changes only the fields it carries. An absent or null field is
@@ -50,6 +52,8 @@ type EditRequest struct {
 	Priority        *string `json:"priority,omitempty"`
 	EstimateMinutes *int    `json:"estimate_minutes,omitempty"`
 	Due             *string `json:"due,omitempty"`
+	RecurKind       *string `json:"recur_kind,omitempty"`
+	RecurRule       *string `json:"recur_rule,omitempty"`
 }
 
 type DoneRequest struct {

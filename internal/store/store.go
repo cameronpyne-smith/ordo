@@ -163,6 +163,7 @@ type Filter struct {
 	Priority   Priority
 	Overdue    bool
 	Linked     bool
+	Recurring  bool
 	Limit      int
 }
 
@@ -201,6 +202,9 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 	}
 	if f.Linked {
 		where = append(where, "mnemo_slug IS NOT NULL")
+	}
+	if f.Recurring {
+		where = append(where, "recur_kind IS NOT NULL")
 	}
 
 	query := `SELECT ` + taskColumns + ` FROM tasks`

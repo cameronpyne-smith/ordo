@@ -59,5 +59,10 @@ func (r EditRequest) Edit() store.Edit {
 		p := store.Priority(*r.Priority)
 		e.Priority = &p
 	}
+	if r.RecurKind != nil {
+		k := store.RecurKind(*r.RecurKind)
+		e.RecurKind = &k
+	}
+	e.RecurRule = r.RecurRule
 	return e
 }

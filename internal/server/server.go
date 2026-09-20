@@ -54,6 +54,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		Priority:   store.Priority(q.Get("priority")),
 		Overdue:    q.Get("overdue") == "true",
 		Linked:     q.Get("linked") == "true",
+		Recurring:  q.Get("recurring") == "true",
 	}
 	if f.All {
 		f.Status = ""
@@ -82,6 +83,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Priority:        store.Priority(req.Priority),
 		EstimateMinutes: req.EstimateMinutes,
 		Due:             req.Due,
+		RecurKind:       store.RecurKind(req.RecurKind),
+		RecurRule:       req.RecurRule,
 	})
 	if err != nil {
 		writeError(w, statusFor(err), err)

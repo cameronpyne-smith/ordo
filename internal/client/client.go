@@ -30,6 +30,7 @@ type Filter struct {
 	Priority   string
 	Overdue    bool
 	Linked     bool
+	Recurring  bool
 	Limit      int
 }
 
@@ -49,6 +50,9 @@ func (f Filter) query() string {
 	}
 	if f.Linked {
 		q.Set("linked", "true")
+	}
+	if f.Recurring {
+		q.Set("recurring", "true")
 	}
 	if f.Limit > 0 {
 		q.Set("limit", strconv.Itoa(f.Limit))
