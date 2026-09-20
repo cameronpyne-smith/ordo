@@ -54,9 +54,12 @@ token  = "..."
 ## Commands
 
 ```sh
-ordo add "Put the bins out" --due 2026-09-22 --difficulty low
+ordo add "Put the bins out" --every "weekly on tue" --difficulty low
+ordo add "Water the plants" --after 3d
+ordo add "Send the CV" --due 2026-09-25 --priority high
 ordo list                        # open tasks, in order
 ordo list --overdue --limit 5
+ordo list --recurring
 ordo set 4 priority=high due=    # an empty value clears a field
 ordo done 4 --minutes 25
 ordo undo 4
@@ -68,6 +71,28 @@ ordo backup                      # on the box; serve also snapshots nightly
 Listing order is fixed and explainable from the fields: overdue first, then by
 due date with undated last, then priority, then difficulty so quick wins float
 within a tier, then oldest first. No ordering an LLM produced is ever stored.
+
+## Recurring tasks
+
+A task repeats either on a schedule or an interval after it was last done.
+
+```
+--every  daily | "weekly on tue" | "weekly on mon,thu" | "monthly on 1" |
+         "monthly on last" | "yearly on 03-15"
+--after  3d | 2w | 1m
+```
+
+`ordo set 4 every="monthly on last"` changes the schedule, and moves the due
+date onto it; `ordo set 4 every=` stops it repeating and leaves the date
+alone.
+
+Completing a recurring task does not close it. The row stays open and keeps
+its id for life; its due date moves to the next occurrence and the
+completion joins its history. An `every` rule advances from the occurrence
+just completed, so putting the bins out on Monday evening moves them to next
+Tuesday rather than tomorrow, and once a date has gone by, today takes over
+so the weeks you missed do not queue up. An `after` rule counts its interval
+from when the task was actually done.
 
 ## Deploy
 
