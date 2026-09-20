@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cameronpyne-smith/ordo/internal/recur"
+
 	// Windows has no system zoneinfo; embed it so Europe/London resolves
 	// everywhere the binary is built.
 	_ "time/tzdata"
@@ -131,12 +133,31 @@ func (t *Task) validate() error {
 	default:
 		return fmt.Errorf("recur_kind %q must be every or after: %w", t.RecurKind, ErrInvalid)
 	}
-	if t.RecurKind != "" && strings.TrimSpace(t.RecurRule) == "" {
-		return fmt.Errorf("recur_rule is required with recur_kind: %w", ErrInvalid)
-	}
-	if t.RecurKind == "" && t.RecurRule != "" {
+	if t.RecurKind == "" && strings.TrimSpace(t.RecurRule) != "" {
 		return fmt.Errorf("recur_rule needs a recur_kind: %w", ErrInvalid)
 	}
+	if t.RecurKind != "" {
+		rule, err := recur.Normalise(string(t.RecurKind), t.RecurRule)
+		if err != nil {
+			return fmt.Errorf("%v: %w", err, ErrInvalid)
+		}
+		t.RecurRule = rule
+	}
+	return t.ensureDue()
+}
+
+// ensureDue gives a recurring task a due date from its own schedule. A
+// recurring task without one would sort with the undated and never come up,
+// which is the opposite of what a chore is for.
+func (t *Task) ensureDue() error {
+	if !t.Recurring() || t.Due != "" {
+		return nil
+	}
+	due, err := recur.First(string(t.RecurKind), t.RecurRule, Today())
+	if err != nil {
+		return fmt.Errorf("%v: %w", err, ErrInvalid)
+	}
+	t.Due = due
 	return nil
 }
 

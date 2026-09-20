@@ -10,6 +10,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/cameronpyne-smith/ordo/internal/recur"
 )
 
 type Store struct {
@@ -73,6 +75,10 @@ var migrations = []string{
 	);
 	CREATE INDEX tasks_status_due ON tasks(status, due);
 	CREATE INDEX completions_task ON completions(task_id);`,
+
+	// Recording the due date an occurrence had makes undo exact rather than
+	// derived, and turns the history into a record of what was done on time.
+	`ALTER TABLE completions ADD COLUMN due TEXT;`,
 }
 
 func (s *Store) migrate() error {
@@ -235,6 +241,8 @@ type Edit struct {
 	Priority   *Priority
 	Estimate   *int
 	Due        *string
+	RecurKind  *RecurKind
+	RecurRule  *string
 	MnemoSlug  *string
 	MnemoTitle *string
 }
@@ -242,7 +250,8 @@ type Edit struct {
 // Empty reports whether the edit would change nothing.
 func (e Edit) Empty() bool {
 	return e.Title == nil && e.Notes == nil && e.Status == nil && e.Difficulty == nil &&
-		e.Priority == nil && e.Estimate == nil && e.Due == nil && e.MnemoSlug == nil && e.MnemoTitle == nil
+		e.Priority == nil && e.Estimate == nil && e.Due == nil && e.RecurKind == nil &&
+		e.RecurRule == nil && e.MnemoSlug == nil && e.MnemoTitle == nil
 }
 
 // TitleChanged reports whether this edit rewrites the title, the only change
@@ -260,6 +269,7 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	wasKind, wasRule := t.RecurKind, t.RecurRule
 	if e.Title != nil {
 		t.Title = *e.Title
 	}
@@ -281,6 +291,12 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if e.Due != nil {
 		t.Due = *e.Due
 	}
+	if e.RecurKind != nil {
+		t.RecurKind = *e.RecurKind
+	}
+	if e.RecurRule != nil {
+		t.RecurRule = *e.RecurRule
+	}
 	if e.MnemoSlug != nil {
 		t.MnemoSlug = *e.MnemoSlug
 	}
@@ -290,7 +306,17 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if err := t.validate(); err != nil {
 		return nil, err
 	}
-	if t.Status == StatusOpen {
+	// A new schedule supersedes the old one's date: "every weekly on mon"
+	// means the coming Monday, not whenever the previous rule had landed.
+	if e.Due == nil && t.Recurring() && (t.RecurKind != wasKind || t.RecurRule != wasRule) {
+		t.Due = ""
+		if err := t.ensureDue(); err != nil {
+			return nil, err
+		}
+	}
+	// A recurring task is always open and still carries the last completion,
+	// so only a one-off loses its done_at on reopening.
+	if t.Status == StatusOpen && !t.Recurring() {
 		t.DoneAt = nil
 	}
 	return s.save(t)
@@ -313,6 +339,19 @@ func (s *Store) save(t *Task) (*Task, error) {
 	return s.Get(t.ID)
 }
 
+// advanceFrom is the date a completion counts from. An every rule measures
+// from the occurrence just completed, so doing Tuesday's chore on Monday
+// evening moves it to next Tuesday rather than tomorrow; once the date has
+// passed, today takes over and the missed weeks do not queue up. An after
+// rule measures the interval from the moment it was actually done.
+func (t *Task) advanceFrom() string {
+	today := Today()
+	if t.RecurKind == RecurEvery && t.Due > today {
+		return t.Due
+	}
+	return today
+}
+
 // Done records a completion. A one-off task closes; recurrence advances the
 // same row instead, so a recurring task keeps one stable id for its lifetime.
 func (s *Store) Done(id int64, minutes int) (*Task, error) {
@@ -327,14 +366,20 @@ func (s *Store) Done(id int64, minutes int) (*Task, error) {
 		return nil, err
 	}
 	now := Now()
-	if _, err := tx.Exec(`INSERT INTO completions (task_id, done_at, minutes) VALUES (?,?,?)`,
-		id, stamp(now), nullInt(minutes)); err != nil {
+	if _, err := tx.Exec(`INSERT INTO completions (task_id, done_at, due, minutes) VALUES (?,?,?,?)`,
+		id, stamp(now), nullStr(t.Due), nullInt(minutes)); err != nil {
 		return nil, fmt.Errorf("completing task %d: %w", id, err)
 	}
 	if t.Recurring() {
-		return nil, fmt.Errorf("completing task %d: recurrence is not implemented yet: %w", id, ErrInvalid)
-	}
-	if _, err := tx.Exec(`UPDATE tasks SET status = ?, done_at = ?, updated_at = ? WHERE id = ?`,
+		next, err := recur.Next(string(t.RecurKind), t.RecurRule, t.advanceFrom())
+		if err != nil {
+			return nil, fmt.Errorf("completing task %d: %v: %w", id, err, ErrInvalid)
+		}
+		if _, err := tx.Exec(`UPDATE tasks SET due = ?, done_at = ?, updated_at = ? WHERE id = ?`,
+			next, stamp(now), stamp(now), id); err != nil {
+			return nil, fmt.Errorf("completing task %d: %w", id, err)
+		}
+	} else if _, err := tx.Exec(`UPDATE tasks SET status = ?, done_at = ?, updated_at = ? WHERE id = ?`,
 		string(StatusDone), stamp(now), stamp(now), id); err != nil {
 		return nil, fmt.Errorf("completing task %d: %w", id, err)
 	}
@@ -353,12 +398,14 @@ func (s *Store) Undo(id int64) (*Task, error) {
 	}
 	defer tx.Rollback()
 
-	if _, err := getTx(tx, id); err != nil {
+	t, err := getTx(tx, id)
+	if err != nil {
 		return nil, err
 	}
 	var completionID int64
-	err = tx.QueryRow(`SELECT id FROM completions WHERE task_id = ? ORDER BY done_at DESC, id DESC LIMIT 1`, id).
-		Scan(&completionID)
+	var completionDue sql.NullString
+	err = tx.QueryRow(`SELECT id, due FROM completions WHERE task_id = ? ORDER BY done_at DESC, id DESC LIMIT 1`, id).
+		Scan(&completionID, &completionDue)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("task %d has no completion to undo: %w", id, ErrInvalid)
 	}
@@ -375,8 +422,12 @@ func (s *Store) Undo(id int64) (*Task, error) {
 	} else if err != nil {
 		return nil, fmt.Errorf("undoing task %d: %w", id, err)
 	}
-	if _, err := tx.Exec(`UPDATE tasks SET status = ?, done_at = ?, updated_at = ? WHERE id = ?`,
-		string(StatusOpen), previous, stamp(Now()), id); err != nil {
+	due := any(nullStr(t.Due))
+	if t.Recurring() && completionDue.Valid {
+		due = completionDue.String
+	}
+	if _, err := tx.Exec(`UPDATE tasks SET status = ?, done_at = ?, due = ?, updated_at = ? WHERE id = ?`,
+		string(StatusOpen), previous, due, stamp(Now()), id); err != nil {
 		return nil, fmt.Errorf("undoing task %d: %w", id, err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -406,11 +457,12 @@ type Completion struct {
 	ID      int64
 	TaskID  int64
 	DoneAt  time.Time
+	Due     string
 	Minutes int
 }
 
 func (s *Store) Completions(id int64) ([]Completion, error) {
-	rows, err := s.db.Query(`SELECT id, task_id, done_at, minutes FROM completions
+	rows, err := s.db.Query(`SELECT id, task_id, done_at, due, minutes FROM completions
 		WHERE task_id = ? ORDER BY done_at DESC, id DESC`, id)
 	if err != nil {
 		return nil, fmt.Errorf("reading completions for %d: %w", id, err)
@@ -421,11 +473,13 @@ func (s *Store) Completions(id int64) ([]Completion, error) {
 	for rows.Next() {
 		var c Completion
 		var doneAt string
+		var due sql.NullString
 		var minutes sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.TaskID, &doneAt, &minutes); err != nil {
+		if err := rows.Scan(&c.ID, &c.TaskID, &doneAt, &due, &minutes); err != nil {
 			return nil, fmt.Errorf("reading completions for %d: %w", id, err)
 		}
 		c.DoneAt = parseStamp(doneAt)
+		c.Due = due.String
 		c.Minutes = int(minutes.Int64)
 		out = append(out, c)
 	}
