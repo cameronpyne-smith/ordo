@@ -1,0 +1,15 @@
+[Unit]
+Description=ordo todo daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/opt/ordo/ordo serve
+Restart=on-failure
+RestartSec=5
+StateDirectory=ordo
+
+[Install]
+WantedBy=multi-user.target

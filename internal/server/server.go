@@ -1,0 +1,226 @@
+package server
+
+import (
+	"crypto/subtle"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/cameronpyne-smith/ordo/internal/api"
+	"github.com/cameronpyne-smith/ordo/internal/store"
+)
+
+type Server struct {
+	store *store.Store
+	token string
+}
+
+func New(st *store.Store, token string) http.Handler {
+	s := &Server{store: st, token: token}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /tasks", s.handleList)
+	mux.HandleFunc("POST /tasks", s.handleCreate)
+	mux.HandleFunc("GET /tasks/{id}", s.handleGet)
+	mux.HandleFunc("POST /tasks/{id}/edit", s.handleEdit)
+	mux.HandleFunc("POST /tasks/{id}/done", s.handleDone)
+	mux.HandleFunc("POST /tasks/{id}/undo", s.handleUndo)
+	mux.HandleFunc("DELETE /tasks/{id}", s.handleDelete)
+	mux.HandleFunc("GET /status", s.handleStatus)
+	return s.auth(mux)
+}
+
+func (s *Server) auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.token != "" {
+			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+				writeError(w, http.StatusUnauthorized, errors.New("invalid or missing bearer token"))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := store.Filter{
+		Status:     store.Status(q.Get("status")),
+		All:        q.Get("status") == "all",
+		Difficulty: store.Difficulty(q.Get("difficulty")),
+		Priority:   store.Priority(q.Get("priority")),
+		Overdue:    q.Get("overdue") == "true",
+		Linked:     q.Get("linked") == "true",
+	}
+	if f.All {
+		f.Status = ""
+	}
+	if limit, err := strconv.Atoi(q.Get("limit")); err == nil {
+		f.Limit = limit
+	}
+	tasks, err := s.store.List(f)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.ListResponse{Tasks: api.FromTasks(tasks), Count: len(tasks)})
+}
+
+func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
+	var req api.CreateRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.store.Create(&store.Task{
+		Title:           req.Title,
+		Notes:           req.Notes,
+		Difficulty:      store.Difficulty(req.Difficulty),
+		Priority:        store.Priority(req.Priority),
+		EstimateMinutes: req.EstimateMinutes,
+		Due:             req.Due,
+	})
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, api.FromTask(t))
+}
+
+func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.store.Get(id)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.FromTask(t))
+}
+
+func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req api.EditRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.store.Edit(id, req.Edit())
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.FromTask(t))
+}
+
+func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req api.DoneRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.store.Done(id, req.Minutes)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.FromTask(t))
+}
+
+func (s *Server) handleUndo(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.store.Undo(id)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.FromTask(t))
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.store.Delete(id); err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.DeleteResponse{ID: id, Deleted: true})
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	sum, err := s.store.Summary()
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.StatusResponse{
+		Open:       sum.Open,
+		Done:       sum.Done,
+		Overdue:    sum.Overdue,
+		Unenriched: sum.Unenriched,
+		Today:      store.Today(),
+	})
+}
+
+func taskID(r *http.Request) (int64, error) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		return 0, errors.New("task id must be a number")
+	}
+	return id, nil
+}
+
+// decode tolerates an empty body so requests whose fields are all optional
+// can be sent without one.
+func decode(r *http.Request, v any) error {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(v); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return errors.New("invalid JSON body: " + err.Error())
+	}
+	return nil
+}
+
+func statusFor(err error) int {
+	if errors.Is(err, store.ErrNotFound) {
+		return http.StatusNotFound
+	}
+	if errors.Is(err, store.ErrInvalid) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, code int, err error) {
+	writeJSON(w, code, api.ErrorResponse{Error: err.Error()})
+}

@@ -1,0 +1,6 @@
+plan.md
+/ordo
+/ordo.exe
+*.db
+*.db-wal
+*.db-shm
