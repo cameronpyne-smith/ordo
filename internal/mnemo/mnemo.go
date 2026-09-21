@@ -60,12 +60,6 @@ type searchResponse struct {
 	Results []Hit `json:"results"`
 }
 
-type linksResponse struct {
-	Slug      string   `json:"slug"`
-	Links     []string `json:"links"`
-	Backlinks []string `json:"backlinks"`
-}
-
 func (c *Client) Get(ctx context.Context, slug string) (*Note, error) {
 	var note Note
 	if err := c.get(ctx, "/notes/"+url.PathEscape(slug), &note); err != nil {
@@ -96,15 +90,6 @@ func (c *Client) Similar(ctx context.Context, slug string, limit int) ([]Hit, er
 		return nil, err
 	}
 	return resp.Results, nil
-}
-
-// Links returns the wikilinks out of a note and the ones pointing back at it.
-func (c *Client) Links(ctx context.Context, slug string) (links, backlinks []string, err error) {
-	var resp linksResponse
-	if err := c.get(ctx, "/notes/"+url.PathEscape(slug)+"/links", &resp); err != nil {
-		return nil, nil, err
-	}
-	return resp.Links, resp.Backlinks, nil
 }
 
 // Exists is the cheapest question ordo asks: is this slug still a note? A

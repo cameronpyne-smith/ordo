@@ -102,20 +102,6 @@ func TestSimilar(t *testing.T) {
 	}
 }
 
-func TestLinks(t *testing.T) {
-	c := newTestVault(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"slug":"a","links":["b","c"],"backlinks":["d"]}`))
-	})
-
-	links, backlinks, err := c.Links(context.Background(), "a")
-	if err != nil {
-		t.Fatalf("links: %v", err)
-	}
-	if len(links) != 2 || len(backlinks) != 1 {
-		t.Fatalf("links = %v backlinks = %v", links, backlinks)
-	}
-}
-
 func TestSlugsWithAwkwardCharactersAreEscaped(t *testing.T) {
 	var path string
 	c := newTestVault(t, func(w http.ResponseWriter, r *http.Request) {
