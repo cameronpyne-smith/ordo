@@ -24,6 +24,8 @@ func newRootCmd() *cobra.Command {
 		Short:         "ordo orders what to do next, over its own store and mnemo",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE:          runTUI(&configPath),
 	}
 	root.PersistentFlags().StringVar(&configPath, "config", "", "path to config file")
 	root.AddCommand(
