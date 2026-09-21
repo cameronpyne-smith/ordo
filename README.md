@@ -63,6 +63,7 @@ ordo list --recurring
 ordo set 4 priority=high due=    # an empty value clears a field
 ordo done 4 --minutes 25
 ordo undo 4
+ordo enrich 4                    # read it with the local model again
 ordo rm 4
 ordo status
 ordo backup                      # on the box; serve also snapshots nightly
@@ -94,6 +95,34 @@ Tuesday rather than tomorrow, and once a date has gone by, today takes over
 so the weeks you missed do not queue up. An `after` rule counts its interval
 from when the task was actually done.
 
+## Enrichment
+
+Adding a task should cost one sentence. The daemon reads that sentence with
+the box's ollama and fills in what it can work out: difficulty, priority, a
+due date, and whether the task repeats.
+
+It happens in the background. `ordo add` writes the row and returns
+immediately; the row fills in a second or two later, and a `~` after the
+title marks one the model has not reached yet.
+
+**Nothing you set is ever overwritten.** The model only fills fields that are
+empty, so `ordo add "Send the CV" --priority high` keeps that priority
+whatever the model thinks. To have it reconsider a field, clear the field and
+ask again:
+
+```sh
+ordo set 4 due=
+ordo enrich 4
+```
+
+Changing a title re-queues the task, since a new title is a new sentence; the
+same rule applies, so it fills what is still empty rather than revising what
+is there.
+
+With no `[ollama]` model configured, or with ollama down, every command works
+exactly as before and rows simply stay as they were typed. Tasks missed while
+it was down are picked up the next time the daemon starts.
+
 ## Deploy
 
 The repo is cloned on the box and built there.
@@ -122,6 +151,9 @@ With the unit installed, an update is `git pull`, `go build`, then
 | Package | Holds |
 |---|---|
 | `internal/store` | SQLite, the task model, validation, ordering, backups |
+| `internal/recur` | The recurrence grammar and next-due arithmetic |
+| `internal/ollama` | The client for the box's local model |
+| `internal/enrich` | The background worker that reads new tasks |
 | `internal/api` | Wire types and conversion |
 | `internal/server` | HTTP routes, bearer auth |
 | `internal/client` | HTTP client used by every CLI command |
