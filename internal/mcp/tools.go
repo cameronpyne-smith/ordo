@@ -27,8 +27,8 @@ type AddArgs struct {
 	Priority        string `json:"priority,omitempty" jsonschema:"only if you actually know it; otherwise inference decides"`
 	EstimateMinutes int    `json:"estimate_minutes,omitempty" jsonschema:"how long it will take, in minutes, if known"`
 	Due             string `json:"due,omitempty" jsonschema:"due date as YYYY-MM-DD; only if the sentence does not already say it"`
-	RecurKind       string `json:"recur_kind,omitempty" jsonschema:"every for a fixed schedule, after for an interval counted from each completion"`
-	RecurRule       string `json:"recur_rule,omitempty" jsonschema:"for every: daily, weekly on tue, weekly on mon,thu, monthly on 1, monthly on last, yearly on 03-15. For after: 3d, 2w, 1m"`
+	RecurKind       string `json:"recur_kind,omitempty" jsonschema:"every for a fixed cycle, after for an interval counted from each completion: every 2w is fortnightly, after 2w is two weeks from the day it was last done"`
+	RecurRule       string `json:"recur_rule,omitempty" jsonschema:"for every: daily, weekly on tue, weekly on mon,thu, monthly on 1, monthly on last, yearly on 03-15, or an interval such as 3d, 2w, 1m. For after: 3d, 2w, 1m"`
 	MnemoSlug       string `json:"mnemo_slug,omitempty" jsonschema:"slug of the mnemo note this task came out of; the note must already exist"`
 }
 

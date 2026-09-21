@@ -4,8 +4,12 @@
 // explainable from the rule text alone.
 //
 //	every: daily | weekly on tue | weekly on mon,thu | monthly on 1 |
-//	       monthly on last | yearly on 03-15
+//	       monthly on last | yearly on 03-15 | 3d | 2w | 1m
 //	after: 3d | 2w | 1m
+//
+// Both kinds take the interval form, and it is the kind that separates them:
+// every 2w is a fortnightly cycle counted from the occurrence, after 2w is
+// two weeks from the day the task was last actually done.
 //
 // Dates are plain calendar dates, YYYY-MM-DD. Everything here is arithmetic
 // on those, so it runs in UTC and never meets a DST boundary.
@@ -36,6 +40,14 @@ func Normalise(kind, rule string) (string, error) {
 	return s.rule, nil
 }
 
+// Interval reports whether a rule is the count-and-unit form, which display
+// has to know: "weekly on tue" says what it means on its own and "2w" does
+// not.
+func Interval(kind, rule string) bool {
+	s, err := parse(kind, rule)
+	return err == nil && s.count > 0
+}
+
 // First is the occurrence a newly recurring task starts on: for every, the
 // first occurrence falling on or after on; for after, on itself, since an
 // interval task is on the list from the moment it is added and only moves
@@ -60,7 +72,10 @@ func occurrence(kind, rule, on string, inclusive bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if s.kind == KindAfter {
+	// An interval is the same arithmetic whichever kind it belongs to. What
+	// differs is the date the caller hands in: the occurrence for every, the
+	// day it was done for after.
+	if s.count > 0 {
 		if inclusive {
 			return on, nil
 		}
@@ -114,9 +129,14 @@ func parseEvery(rule string) (schedule, error) {
 		s.daily, s.rule = true, "daily"
 		return s, nil
 	}
+	// One token that is not a period word is the interval form, which is how
+	// a fortnightly cycle is said: there is no anchored rule for it.
+	if len(tokens) == 1 && !isPeriod(period) {
+		return parseInterval(KindEvery, period)
+	}
 	if len(tokens) < 3 || tokens[1] != "on" {
-		return s, fmt.Errorf("every %q: expected %q, %q, %q, %q or %q",
-			rule, "daily", "weekly on tue", "monthly on 1", "monthly on last", "yearly on 03-15")
+		return s, fmt.Errorf("every %q: expected %q, %q, %q, %q, %q or an interval such as %q",
+			rule, "daily", "weekly on tue", "monthly on 1", "monthly on last", "yearly on 03-15", "2w")
 	}
 	// Joining without a separator lets "mon, thu" and "mon,thu" both work.
 	arg := strings.Join(tokens[2:], "")
@@ -154,23 +174,36 @@ func parseEvery(rule string) (schedule, error) {
 
 func parseAfter(rule string) (schedule, error) {
 	text := strings.ToLower(strings.Join(strings.Fields(rule), ""))
-	s := schedule{kind: KindAfter}
 	if text == "" {
-		return s, fmt.Errorf("after needs an interval, such as %q", "3d")
+		return schedule{kind: KindAfter}, fmt.Errorf("after needs an interval, such as %q", "3d")
 	}
+	return parseInterval(KindAfter, text)
+}
+
+// parseInterval reads the count-and-unit form that both kinds share.
+func parseInterval(kind, text string) (schedule, error) {
+	s := schedule{kind: kind}
 	unit := text[len(text)-1:]
 	switch unit {
 	case "d", "w", "m":
 	default:
-		return s, fmt.Errorf("after %q: unit must be d, w or m, as in %q", rule, "3d")
+		return s, fmt.Errorf("%s %q: unit must be d, w or m, as in %q", kind, text, "3d")
 	}
 	count, err := strconv.Atoi(text[:len(text)-1])
 	if err != nil || count < 1 {
-		return s, fmt.Errorf("after %q: expected a count then a unit, as in %q", rule, "3d")
+		return s, fmt.Errorf("%s %q: expected a count then a unit, as in %q", kind, text, "3d")
 	}
 	s.count, s.unit = count, unit
 	s.rule = strconv.Itoa(count) + unit
 	return s, nil
+}
+
+func isPeriod(token string) bool {
+	switch token {
+	case "weekly", "monthly", "yearly":
+		return true
+	}
+	return false
 }
 
 func parseWeekdays(arg string) ([]time.Weekday, error) {

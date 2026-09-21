@@ -118,6 +118,47 @@ func TestDoneAdvancesAfterFromToday(t *testing.T) {
 	}
 }
 
+// The whole point of an interval under every rather than after: a fortnightly
+// chore done two days early stays on its fortnightly cycle, where the same
+// interval under after would drift two days earlier every time.
+func TestEveryIntervalHoldsItsCycleAndAfterDrifts(t *testing.T) {
+	fixedNow(t, "2026-09-19T09:00:00Z")
+	st := open(t)
+
+	cycle := create(t, st, &Task{Title: "Descale the coffee machine", Due: "2026-09-21", RecurKind: RecurEvery, RecurRule: "2w"})
+	done, err := st.Done(cycle.ID, 0)
+	if err != nil {
+		t.Fatalf("completing: %v", err)
+	}
+	if done.Due != "2026-10-05" {
+		t.Fatalf("due = %q, want a fortnight on from the occurrence, not from today", done.Due)
+	}
+
+	drift := create(t, st, &Task{Title: "Descale the other one", Due: "2026-09-21", RecurKind: RecurAfter, RecurRule: "2w"})
+	done, err = st.Done(drift.ID, 0)
+	if err != nil {
+		t.Fatalf("completing: %v", err)
+	}
+	if done.Due != "2026-10-03" {
+		t.Fatalf("due = %q, want a fortnight on from today", done.Due)
+	}
+}
+
+// A cycle missed for months must not queue up its past occurrences either.
+func TestEveryIntervalLateRestartsFromToday(t *testing.T) {
+	fixedNow(t, "2026-11-01T09:00:00Z")
+	st := open(t)
+
+	cycle := create(t, st, &Task{Title: "Descale the coffee machine", Due: "2026-09-21", RecurKind: RecurEvery, RecurRule: "2w"})
+	done, err := st.Done(cycle.ID, 0)
+	if err != nil {
+		t.Fatalf("completing: %v", err)
+	}
+	if done.Due != "2026-11-15" {
+		t.Fatalf("due = %q, want a fortnight from today", done.Due)
+	}
+}
+
 func TestRecurringCompletionsAccumulate(t *testing.T) {
 	fixedNow(t, "2026-09-22T20:00:00Z")
 	st := open(t)

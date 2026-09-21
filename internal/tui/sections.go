@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
+	"github.com/cameronpyne-smith/ordo/internal/recur"
 	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
@@ -112,6 +113,9 @@ func duePhrase(t api.Task) string {
 func recurPhrase(r api.Recur) string {
 	if r.Kind == "after" {
 		return r.Rule + " after each completion"
+	}
+	if recur.Interval(r.Kind, r.Rule) {
+		return "every " + r.Rule
 	}
 	return r.Rule
 }

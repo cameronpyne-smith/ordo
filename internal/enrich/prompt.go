@@ -37,9 +37,11 @@ priority: how much it matters that this one gets done, judged from the task itse
 due: the date the task is for, as YYYY-MM-DD. Resolve words like "tomorrow", "friday" or
   "next week" against today's date. Use "" when the task names no date.
 recur_kind: "every" when the task repeats on a fixed schedule, "after" when it repeats a fixed
-  interval after each time it is done, "" when it does not repeat.
+  interval after each time it is done, "" when it does not repeat. "every 2w" is a fortnightly
+  cycle; "after 2w" is two weeks from the day it was last done.
 recur_rule: the schedule, in exactly one of these forms and no other:
-  every: daily | weekly on tue | weekly on mon,thu | monthly on 1 | monthly on last | yearly on 03-15
+  every: daily | weekly on tue | weekly on mon,thu | monthly on 1 | monthly on last |
+         yearly on 03-15 | 3d | 2w | 1m
   after: 3d | 2w | 1m
   Use "" when recur_kind is "".
 

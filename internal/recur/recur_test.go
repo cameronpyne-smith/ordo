@@ -14,6 +14,9 @@ func TestNormalise(t *testing.T) {
 		{KindEvery, "monthly on 1", "monthly on 1"},
 		{KindEvery, "monthly on last", "monthly on last"},
 		{KindEvery, "yearly on 03-15", "yearly on 03-15"},
+		{KindEvery, "2w", "2w"},
+		{KindEvery, " 2W ", "2w"},
+		{KindEvery, "10d", "10d"},
 		{KindAfter, "3d", "3d"},
 		{KindAfter, " 2W ", "2w"},
 		{KindAfter, "1m", "1m"},
@@ -44,6 +47,10 @@ func TestNormaliseRejects(t *testing.T) {
 		{KindEvery, "monthly on first"},
 		{KindEvery, "yearly on 15-03"},
 		{KindEvery, "hourly on 3"},
+		{KindEvery, "3y"},
+		{KindEvery, "0w"},
+		{KindEvery, "fortnightly"},
+		{KindEvery, "every 2w"},
 		{KindAfter, ""},
 		{KindAfter, "3"},
 		{KindAfter, "d"},
@@ -84,6 +91,8 @@ func TestNext(t *testing.T) {
 		{"after months", KindAfter, "1m", "2026-09-21", "2026-10-21"},
 		{"after a month clamps", KindAfter, "1m", "2026-01-31", "2026-02-28"},
 		{"after months crosses a year", KindAfter, "3m", "2026-11-30", "2027-02-28"},
+		{"every fortnight", KindEvery, "2w", "2026-09-21", "2026-10-05"},
+		{"every interval clamps a month", KindEvery, "1m", "2026-01-31", "2026-02-28"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -111,6 +120,7 @@ func TestFirst(t *testing.T) {
 		{"monthly waits for the day", KindEvery, "monthly on 1", "2026-09-02", "2026-10-01"},
 		{"yearly starts today when today matches", KindEvery, "yearly on 03-15", "2026-03-15", "2026-03-15"},
 		{"after is due straight away", KindAfter, "3d", "2026-09-21", "2026-09-21"},
+		{"every interval starts today", KindEvery, "2w", "2026-09-21", "2026-09-21"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -140,6 +150,8 @@ func TestNextAlwaysAdvances(t *testing.T) {
 		{KindAfter, "3d"},
 		{KindAfter, "2w"},
 		{KindAfter, "1m"},
+		{KindEvery, "2w"},
+		{KindEvery, "1m"},
 	}
 	for _, r := range rules {
 		at := "2026-01-01"
@@ -159,5 +171,27 @@ func TestNextAlwaysAdvances(t *testing.T) {
 func TestBadDate(t *testing.T) {
 	if _, err := Next(KindEvery, "daily", "21-09-2026"); err == nil {
 		t.Error("Next with a non-ISO date: want an error")
+	}
+}
+
+// Interval is what display uses to tell "2w" from "weekly on tue", since one
+// of them says what it means and the other does not.
+func TestInterval(t *testing.T) {
+	cases := []struct {
+		kind, rule string
+		want       bool
+	}{
+		{KindEvery, "2w", true},
+		{KindEvery, "1m", true},
+		{KindAfter, "3d", true},
+		{KindEvery, "daily", false},
+		{KindEvery, "weekly on tue", false},
+		{KindEvery, "monthly on last", false},
+		{KindEvery, "nonsense", false},
+	}
+	for _, c := range cases {
+		if got := Interval(c.kind, c.rule); got != c.want {
+			t.Errorf("Interval(%q, %q) = %v, want %v", c.kind, c.rule, got, c.want)
+		}
 	}
 }
