@@ -40,6 +40,9 @@ token = "..."
 [ollama]
 url   = "http://127.0.0.1:11434"
 model = "qwen3.6:35b"
+
+[calendar]
+ics_url = "https://calendar.example/private-xxxx/basic.ics"
 ```
 
 Laptop:
@@ -71,6 +74,12 @@ ordo link 4                      # ...or see which notes it could point at
 ordo related 4
 ordo unlink 4
 ordo rm 4
+ordo today                       # the day, planned from its free time
+ordo today --why                 # and why each block is where it is
+ordo pin 4                       # claim a task for today
+ordo unpin 4
+ordo prefs                       # the shape of the day
+ordo prefs work_end=16:00 deep_start=06:00 day_start=06:00
 ordo status
 ordo backup                      # on the box; serve also snapshots nightly
 ```
@@ -238,12 +247,92 @@ the notes it might have become if its own has been renamed away.
 While anything on screen is still unread the list refreshes every 2 seconds;
 once everything has been read it drops to 30.
 
+## The day
+
+`ordo today` plans one day. It takes the hours the day is available, cuts out
+work and whatever the calendar says is taken, and fills what is left from the
+list in the daemon's own order.
+
+```
+$ ordo today --why
+2026-09-21  90 of 180 minutes planned
+
+07:00-07:30     3  Send the quant CV        30 min
+08:00-08:45     1  Wooldridge chapter 2     45 min
+12:30-13:00        Call with the recruiter  (calendar)
+17:30-17:45     2  Water the plants         15 min
+19:00-21:00        Climbing                 (calendar)
+
+07:00  overdue by 1 day · high priority · 30 min guessed from its difficulty
+08:00  nothing forced it, so the next one on the list · demanding, so it takes the deep-work window
+17:30  due today · 15 min guessed from its difficulty
+
+not today
+  4    Renew the passport — needs 200 minutes and only 90 of the day's 180 are left
+```
+
+**It is deterministic and nothing stores it.** The same tasks, calendar and
+preferences always give the same day, no language model is anywhere near it,
+and the plan is computed fresh on every read rather than written down. A plan
+you cannot predict is one you end up arguing with, and a stored one is a
+decision someone made earlier pretending to be the current answer.
+
+Every block says why it is there, and so does every task that did not make
+it: `--why` is the same promise the list makes about its order. An estimate
+the model has not measured is named as a guess rather than quietly used.
+
+Two things decide placement beyond the daemon's order. A **pin** claims a
+task for a day ahead of whatever the order would have chosen, and names a
+date, so it never carries into tomorrow by itself. **Demanding work takes the
+deep-work window** first, and a task too long to fit inside it claims nothing
+and is placed normally, because preferring a window is not the same as
+requiring one.
+
+```sh
+ordo prefs
+day_start            07:00     # the earliest anything is scheduled
+day_end              22:00
+work_start           09:00     # never scheduled on a work day
+work_end             17:30
+work_days            mon,tue,wed,thu,fri
+deep_start           07:00     # demanding tasks prefer this window
+deep_end             09:00
+buffer_minutes       10        # left between consecutive blocks
+min_block_minutes    15        # shorter stretches are not offered
+max_minutes_per_day  240       # the cap on what one day is given
+```
+
+Changing one leaves the rest alone, and a day that could not exist is refused
+whole rather than half-written: deep work outside the usable day is a clash,
+not a silent no-op.
+
+## The calendar
+
+`[calendar] ics_url` is a published ICS feed, read and never written. ordo
+does not put blocks in your diary: a scheduler that writes to a calendar you
+do not yet trust is one you turn off.
+
+**A feed is optional and its absence is normal**, not a degraded state.
+Working hours alone already describe most of a week, and the packer answers
+the same way with or without one. A feed that is configured and unreadable
+costs the plan some knowledge and says so, rather than failing the request.
+
+Recurring events, exclusions, all-day events, durations instead of end times,
+and events marked free or cancelled are all handled: most of what fills a
+calendar repeats, so a reader that ignored `RRULE` would miss the majority of
+a real week. One unparseable event is skipped rather than losing the rest.
+
+Any provider with a private ICS address works. Point it at a personal
+calendar rather than a work one: a corporate tenant usually blocks publishing
+anyway, and ordo only needs to know when you are busy, which `work_start` and
+`work_end` already say for the job itself.
+
 ## Claude
 
 The daemon serves MCP at `/mcp` on the same port, behind the same bearer
 token, so a Claude session gets the same operations as the CLI: `todo_list`,
 `todo_add`, `todo_done`, `todo_undo`, `todo_set`, `todo_link`,
-`todo_related`, `todo_delete`.
+`todo_related`, `todo_delete`, `todo_today`, `todo_pin`, `todo_preferences`.
 
 ```sh
 claude mcp add --transport http ordo http://100.103.58.27:7930/mcp \
@@ -323,6 +412,8 @@ With the unit installed, an update is `git pull`, `go build`, then
 | `internal/ollama` | The client for the box's local model |
 | `internal/enrich` | The background worker that reads new tasks |
 | `internal/mnemo` | The read-only vault client |
+| `internal/calendar` | The read-only ICS feed reader |
+| `internal/schedule` | Free windows and the deterministic day packer |
 | `internal/api` | Wire types and conversion |
 | `internal/todo` | What ordo does, independent of how it is asked |
 | `internal/server` | HTTP routes, bearer auth |
