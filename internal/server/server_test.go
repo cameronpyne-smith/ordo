@@ -15,14 +15,23 @@ import (
 
 const testToken = "secret"
 
-func newTestServer(t *testing.T) (http.Handler, *store.Store) {
+// queueSpy stands in for the enrichment worker so the tests can see which
+// requests ask for a task to be read.
+type queueSpy struct {
+	ids []int64
+}
+
+func (q *queueSpy) Queue(id int64) { q.ids = append(q.ids, id) }
+
+func newTestServer(t *testing.T) (http.Handler, *store.Store, *queueSpy) {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "ordo.db"))
 	if err != nil {
 		t.Fatalf("opening store: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	return New(st, testToken), st
+	spy := &queueSpy{}
+	return New(st, testToken, spy), st, spy
 }
 
 func request(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
@@ -52,7 +61,7 @@ func decodeInto(t *testing.T, rec *httptest.ResponseRecorder, v any) {
 }
 
 func TestAuthRequired(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
 	rec := httptest.NewRecorder()
@@ -71,7 +80,7 @@ func TestAuthRequired(t *testing.T) {
 }
 
 func TestCreateAndList(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 
 	rec := request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Put the bins out", Difficulty: "low"})
 	if rec.Code != http.StatusCreated {
@@ -95,7 +104,7 @@ func TestCreateAndList(t *testing.T) {
 }
 
 func TestCreateValidationIsBadRequest(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 
 	rec := request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "x", Difficulty: "trivial"})
 	if rec.Code != http.StatusBadRequest {
@@ -109,21 +118,21 @@ func TestCreateValidationIsBadRequest(t *testing.T) {
 }
 
 func TestGetMissingIsNotFound(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 	if rec := request(t, h, http.MethodGet, "/tasks/404", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
 
 func TestGetNonNumericIdIsBadRequest(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 	if rec := request(t, h, http.MethodGet, "/tasks/abc", nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }
 
 func TestEditOnlyTouchesGivenFields(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 	rec := request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Draft CV", Due: "2026-09-25"})
 	var created api.Task
 	decodeInto(t, rec, &created)
@@ -141,7 +150,7 @@ func TestEditOnlyTouchesGivenFields(t *testing.T) {
 }
 
 func TestDoneThenUndo(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 	rec := request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Draft CV"})
 	var created api.Task
 	decodeInto(t, rec, &created)
@@ -168,7 +177,7 @@ func TestDoneThenUndo(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 	rec := request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Draft CV"})
 	var created api.Task
 	decodeInto(t, rec, &created)
@@ -182,7 +191,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestStatusCounts(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "One"})
 
 	rec := request(t, h, http.MethodGet, "/status", nil)

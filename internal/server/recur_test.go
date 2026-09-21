@@ -8,7 +8,7 @@ import (
 )
 
 func TestCreateRecurring(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 
 	rec := request(t, h, http.MethodPost, "/tasks", api.CreateRequest{
 		Title: "Put the bins out", RecurKind: "every", RecurRule: "weekly on tue",
@@ -40,7 +40,7 @@ func TestCreateRecurring(t *testing.T) {
 }
 
 func TestCreateRejectsBadRule(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 
 	rec := request(t, h, http.MethodPost, "/tasks", api.CreateRequest{
 		Title: "Bins", RecurKind: "every", RecurRule: "weekly on funday",
@@ -51,7 +51,7 @@ func TestCreateRejectsBadRule(t *testing.T) {
 }
 
 func TestEditRecurrence(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 
 	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Bins"})
 
@@ -79,7 +79,7 @@ func TestEditRecurrence(t *testing.T) {
 }
 
 func TestListRecurringOnly(t *testing.T) {
-	h, _ := newTestServer(t)
+	h, _, _ := newTestServer(t)
 
 	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "One off"})
 	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{

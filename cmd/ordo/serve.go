@@ -10,6 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cameronpyne-smith/ordo/internal/config"
+	"github.com/cameronpyne-smith/ordo/internal/enrich"
+	"github.com/cameronpyne-smith/ordo/internal/ollama"
 	"github.com/cameronpyne-smith/ordo/internal/server"
 	"github.com/cameronpyne-smith/ordo/internal/store"
 )
@@ -56,7 +59,9 @@ func newServeCmd(configPath *string) *cobra.Command {
 				log.Warn("backup_dir not set — no snapshots are being taken")
 			}
 
-			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(st, cfg.Token)}
+			worker := startEnrichment(ctx, st, cfg, log)
+
+			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(st, cfg.Token, worker)}
 			errCh := make(chan error, 1)
 			go func() {
 				log.Info("listening", "addr", cfg.Bind)
@@ -74,6 +79,31 @@ func newServeCmd(configPath *string) *cobra.Command {
 			}
 		},
 	}
+}
+
+// startEnrichment brings up the background reader of new tasks, or reports
+// why it is not running. It returns nil when there is no model configured,
+// which every other part of the daemon is built to tolerate.
+func startEnrichment(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger) server.Enqueuer {
+	if cfg.Ollama.URL == "" || cfg.Ollama.Model == "" {
+		log.Warn("enrichment is off — set [ollama] url and model to have tasks read")
+		return nil
+	}
+	model := ollama.New(cfg.Ollama.URL, cfg.Ollama.Model)
+	worker := enrich.New(st, model, log)
+	go worker.Run(ctx)
+	// The check is only worth a log line, but it is the difference between
+	// seeing the wrong model name at startup and wondering for a week why
+	// nothing is being filled in.
+	go func() {
+		if err := model.Check(ctx); err != nil {
+			log.Warn("ollama is not ready", "error", err)
+			return
+		}
+		log.Info("enrichment ready", "url", cfg.Ollama.URL, "model", cfg.Ollama.Model)
+	}()
+	worker.Backlog()
+	return worker
 }
 
 // runBackups snapshots the database at 03:00 local time each night. A failure

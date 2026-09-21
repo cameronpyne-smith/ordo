@@ -274,6 +274,11 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 		return nil, err
 	}
 	wasKind, wasRule := t.RecurKind, t.RecurRule
+	// A new title is a new sentence to read, so the task stops counting as
+	// enriched until the worker has been back to it.
+	if e.TitleChanged(t.Title) {
+		t.EnrichedAt = nil
+	}
 	if e.Title != nil {
 		t.Title = *e.Title
 	}

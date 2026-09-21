@@ -93,6 +93,11 @@ func (c *Client) Undo(id int64) (*api.Task, error) {
 	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/undo", nil, &resp)
 }
 
+func (c *Client) Enrich(id int64) (*api.Task, error) {
+	var resp api.Task
+	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/enrich", nil, &resp)
+}
+
 func (c *Client) Delete(id int64) (*api.DeleteResponse, error) {
 	var resp api.DeleteResponse
 	return &resp, c.do(http.MethodDelete, "/tasks/"+strconv.FormatInt(id, 10), nil, &resp)

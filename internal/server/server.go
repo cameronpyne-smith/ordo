@@ -13,13 +13,21 @@ import (
 	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
-type Server struct {
-	store *store.Store
-	token string
+// Enqueuer is how the server asks for a task to be read by the model. It is
+// an interface, and may be nil, so the daemon runs the same with enrichment
+// switched off as with it on.
+type Enqueuer interface {
+	Queue(id int64)
 }
 
-func New(st *store.Store, token string) http.Handler {
-	s := &Server{store: st, token: token}
+type Server struct {
+	store  *store.Store
+	token  string
+	enrich Enqueuer
+}
+
+func New(st *store.Store, token string, enrich Enqueuer) http.Handler {
+	s := &Server{store: st, token: token, enrich: enrich}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /tasks", s.handleList)
 	mux.HandleFunc("POST /tasks", s.handleCreate)
@@ -27,6 +35,7 @@ func New(st *store.Store, token string) http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/edit", s.handleEdit)
 	mux.HandleFunc("POST /tasks/{id}/done", s.handleDone)
 	mux.HandleFunc("POST /tasks/{id}/undo", s.handleUndo)
+	mux.HandleFunc("POST /tasks/{id}/enrich", s.handleEnrich)
 	mux.HandleFunc("DELETE /tasks/{id}", s.handleDelete)
 	mux.HandleFunc("GET /status", s.handleStatus)
 	return s.auth(mux)
@@ -90,6 +99,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusFor(err), err)
 		return
 	}
+	s.queue(t.ID)
 	writeJSON(w, http.StatusCreated, api.FromTask(t))
 }
 
@@ -118,10 +128,19 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	t, err := s.store.Edit(id, req.Edit())
+	before, err := s.store.Get(id)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
+	}
+	edit := req.Edit()
+	t, err := s.store.Edit(id, edit)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	if edit.TitleChanged(before.Title) {
+		s.queue(t.ID)
 	}
 	writeJSON(w, http.StatusOK, api.FromTask(t))
 }
@@ -159,6 +178,27 @@ func (s *Server) handleUndo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.FromTask(t))
 }
 
+// handleEnrich puts a task back in front of the model on demand, which is the
+// way out of a bad extraction: clear the field that is wrong and ask again.
+func (s *Server) handleEnrich(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if s.enrich == nil {
+		writeError(w, http.StatusServiceUnavailable, errors.New("enrichment is off: set [ollama] url and model on the daemon"))
+		return
+	}
+	t, err := s.store.Get(id)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	s.queue(t.ID)
+	writeJSON(w, http.StatusAccepted, api.FromTask(t))
+}
+
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id, err := taskID(r)
 	if err != nil {
@@ -185,6 +225,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Unenriched: sum.Unenriched,
 		Today:      store.Today(),
 	})
+}
+
+// queue is nil-safe because enrichment is optional: with no model configured
+// every surface still works, tasks just stay as they were typed.
+func (s *Server) queue(id int64) {
+	if s.enrich != nil {
+		s.enrich.Queue(id)
+	}
 }
 
 func taskID(r *http.Request) (int64, error) {

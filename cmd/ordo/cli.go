@@ -186,6 +186,30 @@ func newUndoCmd(configPath *string) *cobra.Command {
 	}
 }
 
+func newEnrichCmd(configPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "enrich <id>",
+		Short: "Read a task with the local model again and fill in what is still unset",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			c, err := newClient(*configPath)
+			if err != nil {
+				return err
+			}
+			t, err := c.Enrich(id)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "queued %d: %s\n", t.ID, t.Title)
+			return nil
+		},
+	}
+}
+
 func newRemoveCmd(configPath *string) *cobra.Command {
 	var force bool
 
