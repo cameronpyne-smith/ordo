@@ -29,7 +29,11 @@ Answer with the JSON object the schema describes and nothing else.
 
 difficulty: how demanding the task is, not how long it takes.
   low means routine, medium means it needs attention, high means it needs real thought or effort.
-priority: how much it matters that this happens soon. Use normal unless the task says otherwise.
+priority: how much it matters that this one gets done, judged from the task itself.
+  high when letting it slip has a real consequence: a deadline, money, health, or
+  someone else waiting on it. low when nothing happens if it waits a month.
+  normal for the rest. Decide between the three; do not answer normal merely
+  because the task does not say which it is.
 due: the date the task is for, as YYYY-MM-DD. Resolve words like "tomorrow", "friday" or
   "next week" against today's date. Use "" when the task names no date.
 recur_kind: "every" when the task repeats on a fixed schedule, "after" when it repeats a fixed
