@@ -1,3 +1,6 @@
+// Package server is the HTTP face of the daemon. It parses requests, calls
+// the todo service, and turns its errors into status codes; the behaviour
+// itself lives in that service so the MCP tools get the same one.
 package server
 
 import (
@@ -5,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,41 +15,30 @@ import (
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/store"
+	"github.com/cameronpyne-smith/ordo/internal/todo"
 )
 
-// Enqueuer is how the server asks for a task to be read by the model. It is
-// an interface, and may be nil, so the daemon runs the same with enrichment
-// switched off as with it on.
-type Enqueuer interface {
-	Queue(id int64)
-}
-
-// Options is how the daemon is assembled. Enrichment and the vault are both
-// optional: with either left out every other route behaves exactly the same,
-// which is what makes "ollama is down" and "mnemo is down" survivable.
+// Options is how the listener is assembled. MCP may be left out, in which
+// case the daemon serves the HTTP API alone.
 type Options struct {
-	Store  *store.Store
-	Token  string
-	Enrich Enqueuer
-	Vault  *mnemo.Client
-	Log    *slog.Logger
+	Todo  *todo.Service
+	Token string
+	MCP   http.Handler
 }
 
 type Server struct {
-	store  *store.Store
-	token  string
-	enrich Enqueuer
-	vault  *mnemo.Client
-	log    *slog.Logger
+	todo  *todo.Service
+	token string
 }
 
 func New(opts Options) http.Handler {
-	log := opts.Log
-	if log == nil {
-		log = slog.New(slog.NewTextHandler(io.Discard, nil))
-	}
-	s := &Server{store: opts.Store, token: opts.Token, enrich: opts.Enrich, vault: opts.Vault, log: log}
+	s := &Server{todo: opts.Todo, token: opts.Token}
 	mux := http.NewServeMux()
+	// The MCP mount sits behind the same bearer token as everything else,
+	// because it is the same daemon on the same tailnet port.
+	if opts.MCP != nil {
+		mux.Handle("/mcp", opts.MCP)
+	}
 	mux.HandleFunc("GET /tasks", s.handleList)
 	mux.HandleFunc("POST /tasks", s.handleCreate)
 	mux.HandleFunc("GET /tasks/{id}", s.handleGet)
@@ -94,18 +85,12 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	if limit, err := strconv.Atoi(q.Get("limit")); err == nil {
 		f.Limit = limit
 	}
-	tasks, err := s.store.List(f)
+	resp, err := s.todo.List(r.Context(), f)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	out := api.FromTasks(tasks)
-	// The linked views are the ones whose whole point is the links, so they
-	// are the ones that pay to check them. A plain list stays one read.
-	if f.Linked || f.Note != "" {
-		s.markOrphans(r.Context(), out)
-	}
-	writeJSON(w, http.StatusOK, api.ListResponse{Tasks: out, Count: len(out)})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
@@ -114,29 +99,12 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	slug, title, err := s.resolveLink(r.Context(), req.MnemoSlug)
+	t, err := s.todo.Create(r.Context(), req)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	t, err := s.store.Create(&store.Task{
-		Title:           req.Title,
-		Notes:           req.Notes,
-		Difficulty:      store.Difficulty(req.Difficulty),
-		Priority:        store.Priority(req.Priority),
-		EstimateMinutes: req.EstimateMinutes,
-		Due:             req.Due,
-		RecurKind:       store.RecurKind(req.RecurKind),
-		RecurRule:       req.RecurRule,
-		MnemoSlug:       slug,
-		MnemoTitle:      title,
-	})
-	if err != nil {
-		writeError(w, statusFor(err), err)
-		return
-	}
-	s.queue(t.ID)
-	writeJSON(w, http.StatusCreated, api.FromTask(t))
+	writeJSON(w, http.StatusCreated, t)
 }
 
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -145,12 +113,12 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	t, err := s.store.Get(id)
+	t, err := s.todo.Get(id)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, api.FromTask(t))
+	writeJSON(w, http.StatusOK, t)
 }
 
 func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
@@ -164,21 +132,12 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	before, err := s.store.Get(id)
+	t, err := s.todo.Edit(id, req)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	edit := req.Edit()
-	t, err := s.store.Edit(id, edit)
-	if err != nil {
-		writeError(w, statusFor(err), err)
-		return
-	}
-	if edit.TitleChanged(before.Title) {
-		s.queue(t.ID)
-	}
-	writeJSON(w, http.StatusOK, api.FromTask(t))
+	writeJSON(w, http.StatusOK, t)
 }
 
 func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
@@ -192,12 +151,12 @@ func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	t, err := s.store.Done(id, req.Minutes)
+	t, err := s.todo.Done(id, req.Minutes)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, api.FromTask(t))
+	writeJSON(w, http.StatusOK, t)
 }
 
 func (s *Server) handleUndo(w http.ResponseWriter, r *http.Request) {
@@ -206,33 +165,73 @@ func (s *Server) handleUndo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	t, err := s.store.Undo(id)
+	t, err := s.todo.Undo(id)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, api.FromTask(t))
+	writeJSON(w, http.StatusOK, t)
 }
 
-// handleEnrich puts a task back in front of the model on demand, which is the
-// way out of a bad extraction: clear the field that is wrong and ask again.
 func (s *Server) handleEnrich(w http.ResponseWriter, r *http.Request) {
 	id, err := taskID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if s.enrich == nil {
-		writeError(w, http.StatusServiceUnavailable, errors.New("enrichment is off: set [ollama] url and model on the daemon"))
-		return
-	}
-	t, err := s.store.Get(id)
+	t, err := s.todo.Enrich(id)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	s.queue(t.ID)
-	writeJSON(w, http.StatusAccepted, api.FromTask(t))
+	writeJSON(w, http.StatusAccepted, t)
+}
+
+func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req api.LinkRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.todo.Link(r.Context(), id, req.Slug)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, t)
+}
+
+func (s *Server) handleUnlink(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.todo.Unlink(id)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, t)
+}
+
+func (s *Server) handleRelated(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	resp, err := s.todo.Related(r.Context(), id)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +240,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.store.Delete(id); err != nil {
+	if err := s.todo.Delete(id); err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
@@ -249,26 +248,12 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	sum, err := s.store.Summary()
+	resp, err := s.todo.Status()
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, api.StatusResponse{
-		Open:       sum.Open,
-		Done:       sum.Done,
-		Overdue:    sum.Overdue,
-		Unenriched: sum.Unenriched,
-		Today:      store.Today(),
-	})
-}
-
-// queue is nil-safe because enrichment is optional: with no model configured
-// every surface still works, tasks just stay as they were typed.
-func (s *Server) queue(id int64) {
-	if s.enrich != nil {
-		s.enrich.Queue(id)
-	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func taskID(r *http.Request) (int64, error) {
@@ -299,7 +284,7 @@ func statusFor(err error) int {
 	if errors.Is(err, store.ErrInvalid) {
 		return http.StatusBadRequest
 	}
-	if errors.Is(err, errNoVault) {
+	if errors.Is(err, todo.ErrNoVault) || errors.Is(err, todo.ErrNoModel) {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusInternalServerError

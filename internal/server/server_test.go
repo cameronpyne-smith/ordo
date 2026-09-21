@@ -12,6 +12,7 @@ import (
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/store"
+	"github.com/cameronpyne-smith/ordo/internal/todo"
 )
 
 const testToken = "secret"
@@ -32,7 +33,8 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store, *queueSpy) {
 	}
 	t.Cleanup(func() { st.Close() })
 	spy := &queueSpy{}
-	return New(Options{Store: st, Token: testToken, Enrich: spy}), st, spy
+	svc := todo.New(todo.Options{Store: st, Enrich: spy})
+	return New(Options{Todo: svc, Token: testToken}), st, spy
 }
 
 // newLinkedServer wires the handler to a stub vault, so the tests exercise
@@ -46,7 +48,8 @@ func newLinkedServer(t *testing.T, vault http.HandlerFunc) (http.Handler, *store
 	t.Cleanup(func() { st.Close() })
 	srv := httptest.NewServer(vault)
 	t.Cleanup(srv.Close)
-	return New(Options{Store: st, Token: testToken, Vault: mnemo.New(srv.URL, "")}), st
+	svc := todo.New(todo.Options{Store: st, Vault: mnemo.New(srv.URL, "")})
+	return New(Options{Todo: svc, Token: testToken}), st
 }
 
 func request(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {

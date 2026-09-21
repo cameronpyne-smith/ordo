@@ -7,6 +7,7 @@ import (
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/store"
+	"github.com/cameronpyne-smith/ordo/internal/todo"
 )
 
 func TestCreateQueuesEnrichment(t *testing.T) {
@@ -76,7 +77,7 @@ func TestEnrichEndpointSaysWhenItIsOff(t *testing.T) {
 		t.Fatalf("opening store: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := New(Options{Store: st, Token: testToken})
+	h := New(Options{Todo: todo.New(todo.Options{Store: st}), Token: testToken})
 
 	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Bins"})
 	rec := request(t, h, http.MethodPost, "/tasks/1/enrich", nil)
