@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
+	"github.com/cameronpyne-smith/ordo/internal/calendar"
 	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/store"
 )
@@ -47,17 +48,19 @@ type Enqueuer interface {
 }
 
 type Options struct {
-	Store  *store.Store
-	Enrich Enqueuer
-	Vault  *mnemo.Client
-	Log    *slog.Logger
+	Store    *store.Store
+	Enrich   Enqueuer
+	Vault    *mnemo.Client
+	Calendar *calendar.Client
+	Log      *slog.Logger
 }
 
 type Service struct {
-	store  *store.Store
-	enrich Enqueuer
-	vault  *mnemo.Client
-	log    *slog.Logger
+	store    *store.Store
+	enrich   Enqueuer
+	vault    *mnemo.Client
+	calendar *calendar.Client
+	log      *slog.Logger
 }
 
 func New(opts Options) *Service {
@@ -65,7 +68,13 @@ func New(opts Options) *Service {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Service{store: opts.Store, enrich: opts.Enrich, vault: opts.Vault, log: log}
+	return &Service{
+		store:    opts.Store,
+		enrich:   opts.Enrich,
+		vault:    opts.Vault,
+		calendar: opts.Calendar,
+		log:      log,
+	}
 }
 
 // Linked reports whether links can be resolved at all, so a surface can say

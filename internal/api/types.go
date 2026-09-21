@@ -14,6 +14,7 @@ type Task struct {
 	Overdue         bool   `json:"overdue,omitempty"`
 	Recur           *Recur `json:"recur,omitempty"`
 	Mnemo           *Link  `json:"mnemo,omitempty"`
+	PinnedOn        string `json:"pinned_on,omitempty"`
 	CreatedAt       string `json:"created_at"`
 	UpdatedAt       string `json:"updated_at"`
 	DoneAt          string `json:"done_at,omitempty"`
@@ -119,4 +120,84 @@ type StatusResponse struct {
 
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+type PinRequest struct {
+	Day string `json:"day,omitempty"`
+}
+
+// Preferences is the shape of a day. Times are HH:MM and days are the same
+// mon,tue spelling the recurrence grammar uses, because one timezone and one
+// user means a clock is all a time ever has to be here.
+type Preferences struct {
+	DayStart        string `json:"day_start"`
+	DayEnd          string `json:"day_end"`
+	WorkStart       string `json:"work_start"`
+	WorkEnd         string `json:"work_end"`
+	WorkDays        string `json:"work_days"`
+	DeepStart       string `json:"deep_start"`
+	DeepEnd         string `json:"deep_end"`
+	BufferMinutes   int    `json:"buffer_minutes"`
+	MinBlockMinutes int    `json:"min_block_minutes"`
+	MaxMinutesDay   int    `json:"max_minutes_per_day"`
+}
+
+// PreferencesRequest changes only what it carries, like EditRequest. The
+// daemon reads the current row, applies these, and validates the whole day
+// rather than one field of it.
+type PreferencesRequest struct {
+	DayStart        *string `json:"day_start,omitempty"`
+	DayEnd          *string `json:"day_end,omitempty"`
+	WorkStart       *string `json:"work_start,omitempty"`
+	WorkEnd         *string `json:"work_end,omitempty"`
+	WorkDays        *string `json:"work_days,omitempty"`
+	DeepStart       *string `json:"deep_start,omitempty"`
+	DeepEnd         *string `json:"deep_end,omitempty"`
+	BufferMinutes   *int    `json:"buffer_minutes,omitempty"`
+	MinBlockMinutes *int    `json:"min_block_minutes,omitempty"`
+	MaxMinutesDay   *int    `json:"max_minutes_per_day,omitempty"`
+}
+
+// Block is one task placed at a time, carrying why it landed there.
+type Block struct {
+	Task    Task   `json:"task"`
+	Start   string `json:"start"`
+	End     string `json:"end"`
+	Minutes int    `json:"minutes"`
+	Reason  string `json:"reason"`
+}
+
+// Busy is time the calendar says is already taken.
+type Busy struct {
+	Start   string `json:"start"`
+	End     string `json:"end"`
+	Summary string `json:"summary,omitempty"`
+}
+
+type Window struct {
+	Start   string `json:"start"`
+	End     string `json:"end"`
+	Minutes int    `json:"minutes"`
+}
+
+// Skip is a task that was a candidate and did not fit, with the reason.
+type Skip struct {
+	Task   Task   `json:"task"`
+	Reason string `json:"reason"`
+}
+
+// TodayResponse is a whole day: what is planned, what the calendar took,
+// what is left, and what did not make it. CalendarError is set when a feed
+// is configured and could not be read, in which case the plan is still
+// returned and simply knows less.
+type TodayResponse struct {
+	Date           string   `json:"date"`
+	Blocks         []Block  `json:"blocks"`
+	Busy           []Busy   `json:"busy,omitempty"`
+	Free           []Window `json:"free,omitempty"`
+	Skipped        []Skip   `json:"skipped,omitempty"`
+	PlannedMinutes int      `json:"planned_minutes"`
+	BudgetMinutes  int      `json:"budget_minutes"`
+	Calendar       bool     `json:"calendar"`
+	CalendarError  string   `json:"calendar_error,omitempty"`
 }

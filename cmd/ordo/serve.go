@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cameronpyne-smith/ordo/internal/calendar"
 	"github.com/cameronpyne-smith/ordo/internal/config"
 	"github.com/cameronpyne-smith/ordo/internal/enrich"
 	"github.com/cameronpyne-smith/ordo/internal/mcp"
@@ -65,7 +66,17 @@ func newServeCmd(configPath *string) *cobra.Command {
 			worker := startEnrichment(ctx, st, cfg, log)
 			vault := openVault(cfg, log)
 
-			svc := todo.New(todo.Options{Store: st, Enrich: worker, Vault: vault, Log: log})
+			diary := calendar.New(cfg.Calendar.ICSURL, log)
+			if diary.Configured() {
+				log.Info("calendar feed configured")
+			}
+			svc := todo.New(todo.Options{
+				Store:    st,
+				Enrich:   worker,
+				Vault:    vault,
+				Calendar: diary,
+				Log:      log,
+			})
 			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(server.Options{
 				Todo:  svc,
 				Token: cfg.Token,
