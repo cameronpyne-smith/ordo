@@ -64,6 +64,10 @@ ordo set 4 priority=high due=    # an empty value clears a field
 ordo done 4 --minutes 25
 ordo undo 4
 ordo enrich 4                    # read it with the local model again
+ordo link 4 latent               # point a task at a mnemo note
+ordo link 4                      # ...or see which notes it could point at
+ordo related 4
+ordo unlink 4
 ordo rm 4
 ordo status
 ordo backup                      # on the box; serve also snapshots nightly
@@ -123,6 +127,46 @@ With no `[ollama]` model configured, or with ollama down, every command works
 exactly as before and rows simply stay as they were typed. Tasks missed while
 it was down are picked up the next time the daemon starts.
 
+## Notes in mnemo
+
+A task links to a note when something remains after the task is finished.
+Bins: nothing remains, no link. "Write the quant CV": the note already
+exists, link it.
+
+```sh
+ordo add "Rewrite the pricing model" --link latent
+ordo link 4                      # search the vault with the task's own words
+ordo link 4 latent               # link it
+ordo related 4                   # the note, what it links to, what links back
+ordo list --linked
+```
+
+ordo never writes to mnemo. The client has no method that could: linking
+stores a slug on ordo's own row, and nothing else moves.
+
+Linking records the note's description as well as its slug. That remembered
+line is what finds the note again when mnemo renames or merges it, which it
+does on its own. A link whose note has gone is not an error — the task stays,
+`ordo list --linked` shows it as `(missing)`, and `ordo related` searches for
+where the note went:
+
+```
+$ ordo related 4
+the linked note is no longer in the vault; it may have been renamed or merged
+
+closest notes
+  career-transition-quantitative-researcher  Plan for moving into quant research
+  latent                                     The company
+
+  ordo link 4 <slug>
+```
+
+Only `ordo list --linked` checks the links, since that is the view whose point
+they are; a plain `ordo list` stays one database read. With mnemo unreachable
+nothing is marked missing — "I could not ask" is not "it is gone" — and every
+command except the three link ones works as usual. `ordo unlink` works even
+then: cutting a link is ordo's own business.
+
 ## Deploy
 
 The repo is cloned on the box and built there.
@@ -154,6 +198,7 @@ With the unit installed, an update is `git pull`, `go build`, then
 | `internal/recur` | The recurrence grammar and next-due arithmetic |
 | `internal/ollama` | The client for the box's local model |
 | `internal/enrich` | The background worker that reads new tasks |
+| `internal/mnemo` | The read-only vault client |
 | `internal/api` | Wire types and conversion |
 | `internal/server` | HTTP routes, bearer auth |
 | `internal/client` | HTTP client used by every CLI command |
