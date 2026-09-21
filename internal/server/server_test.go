@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
+	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
@@ -31,7 +32,21 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store, *queueSpy) {
 	}
 	t.Cleanup(func() { st.Close() })
 	spy := &queueSpy{}
-	return New(st, testToken, spy), st, spy
+	return New(Options{Store: st, Token: testToken, Enrich: spy}), st, spy
+}
+
+// newLinkedServer wires the handler to a stub vault, so the tests exercise
+// the real mnemo client over a real connection rather than a fake of it.
+func newLinkedServer(t *testing.T, vault http.HandlerFunc) (http.Handler, *store.Store) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "ordo.db"))
+	if err != nil {
+		t.Fatalf("opening store: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	srv := httptest.NewServer(vault)
+	t.Cleanup(srv.Close)
+	return New(Options{Store: st, Token: testToken, Vault: mnemo.New(srv.URL, "")}), st
 }
 
 func request(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {

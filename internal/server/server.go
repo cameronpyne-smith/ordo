@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
+	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
@@ -20,14 +22,31 @@ type Enqueuer interface {
 	Queue(id int64)
 }
 
+// Options is how the daemon is assembled. Enrichment and the vault are both
+// optional: with either left out every other route behaves exactly the same,
+// which is what makes "ollama is down" and "mnemo is down" survivable.
+type Options struct {
+	Store  *store.Store
+	Token  string
+	Enrich Enqueuer
+	Vault  *mnemo.Client
+	Log    *slog.Logger
+}
+
 type Server struct {
 	store  *store.Store
 	token  string
 	enrich Enqueuer
+	vault  *mnemo.Client
+	log    *slog.Logger
 }
 
-func New(st *store.Store, token string, enrich Enqueuer) http.Handler {
-	s := &Server{store: st, token: token, enrich: enrich}
+func New(opts Options) http.Handler {
+	log := opts.Log
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	s := &Server{store: opts.Store, token: opts.Token, enrich: opts.Enrich, vault: opts.Vault, log: log}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /tasks", s.handleList)
 	mux.HandleFunc("POST /tasks", s.handleCreate)
@@ -36,6 +55,9 @@ func New(st *store.Store, token string, enrich Enqueuer) http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/done", s.handleDone)
 	mux.HandleFunc("POST /tasks/{id}/undo", s.handleUndo)
 	mux.HandleFunc("POST /tasks/{id}/enrich", s.handleEnrich)
+	mux.HandleFunc("POST /tasks/{id}/link", s.handleLink)
+	mux.HandleFunc("POST /tasks/{id}/unlink", s.handleUnlink)
+	mux.HandleFunc("GET /tasks/{id}/related", s.handleRelated)
 	mux.HandleFunc("DELETE /tasks/{id}", s.handleDelete)
 	mux.HandleFunc("GET /status", s.handleStatus)
 	return s.auth(mux)
@@ -76,13 +98,24 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, api.ListResponse{Tasks: api.FromTasks(tasks), Count: len(tasks)})
+	out := api.FromTasks(tasks)
+	// The linked view is the one whose whole point is the links, so it is the
+	// one that pays to check them. A plain list stays a single database read.
+	if f.Linked {
+		s.markOrphans(r.Context(), out)
+	}
+	writeJSON(w, http.StatusOK, api.ListResponse{Tasks: out, Count: len(out)})
 }
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	var req api.CreateRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	slug, title, err := s.resolveLink(r.Context(), req.MnemoSlug)
+	if err != nil {
+		writeError(w, statusFor(err), err)
 		return
 	}
 	t, err := s.store.Create(&store.Task{
@@ -94,6 +127,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Due:             req.Due,
 		RecurKind:       store.RecurKind(req.RecurKind),
 		RecurRule:       req.RecurRule,
+		MnemoSlug:       slug,
+		MnemoTitle:      title,
 	})
 	if err != nil {
 		writeError(w, statusFor(err), err)
@@ -257,11 +292,14 @@ func decode(r *http.Request, v any) error {
 }
 
 func statusFor(err error) int {
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, mnemo.ErrNotFound) {
 		return http.StatusNotFound
 	}
 	if errors.Is(err, store.ErrInvalid) {
 		return http.StatusBadRequest
+	}
+	if errors.Is(err, errNoVault) {
+		return http.StatusServiceUnavailable
 	}
 	return http.StatusInternalServerError
 }

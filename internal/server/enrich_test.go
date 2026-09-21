@@ -76,7 +76,7 @@ func TestEnrichEndpointSaysWhenItIsOff(t *testing.T) {
 		t.Fatalf("opening store: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := New(st, testToken, nil)
+	h := New(Options{Store: st, Token: testToken})
 
 	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Bins"})
 	rec := request(t, h, http.MethodPost, "/tasks/1/enrich", nil)

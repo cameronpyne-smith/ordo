@@ -98,6 +98,21 @@ func (c *Client) Enrich(id int64) (*api.Task, error) {
 	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/enrich", nil, &resp)
 }
 
+func (c *Client) Link(id int64, slug string) (*api.Task, error) {
+	var resp api.Task
+	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/link", api.LinkRequest{Slug: slug}, &resp)
+}
+
+func (c *Client) Unlink(id int64) (*api.Task, error) {
+	var resp api.Task
+	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/unlink", nil, &resp)
+}
+
+func (c *Client) Related(id int64) (*api.RelatedResponse, error) {
+	var resp api.RelatedResponse
+	return &resp, c.do(http.MethodGet, "/tasks/"+strconv.FormatInt(id, 10)+"/related", nil, &resp)
+}
+
 func (c *Client) Delete(id int64) (*api.DeleteResponse, error) {
 	var resp api.DeleteResponse
 	return &resp, c.do(http.MethodDelete, "/tasks/"+strconv.FormatInt(id, 10), nil, &resp)

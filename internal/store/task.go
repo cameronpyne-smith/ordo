@@ -100,6 +100,9 @@ func (t *Task) Overdue() bool {
 // closing it.
 func (t *Task) Recurring() bool { return t.RecurKind != "" }
 
+// Linked reports whether this task points at a note in the vault.
+func (t *Task) Linked() bool { return t.MnemoSlug != "" }
+
 // EffectivePriority resolves the unset case for ordering and display.
 func (t *Task) EffectivePriority() Priority {
 	if t.Priority == "" {
@@ -127,6 +130,13 @@ func (t *Task) validate() error {
 	}
 	if t.EstimateMinutes < 0 {
 		return fmt.Errorf("estimate_minutes must be positive: %w", ErrInvalid)
+	}
+	t.MnemoSlug = strings.TrimSpace(t.MnemoSlug)
+	t.MnemoTitle = strings.TrimSpace(t.MnemoTitle)
+	// The remembered description exists only to find the note again after a
+	// rename, so it goes when the link goes.
+	if t.MnemoSlug == "" {
+		t.MnemoTitle = ""
 	}
 	switch t.RecurKind {
 	case "", RecurEvery, RecurAfter:

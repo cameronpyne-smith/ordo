@@ -12,6 +12,7 @@ import (
 
 	"github.com/cameronpyne-smith/ordo/internal/config"
 	"github.com/cameronpyne-smith/ordo/internal/enrich"
+	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/ollama"
 	"github.com/cameronpyne-smith/ordo/internal/server"
 	"github.com/cameronpyne-smith/ordo/internal/store"
@@ -60,8 +61,15 @@ func newServeCmd(configPath *string) *cobra.Command {
 			}
 
 			worker := startEnrichment(ctx, st, cfg, log)
+			vault := openVault(cfg, log)
 
-			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(st, cfg.Token, worker)}
+			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(server.Options{
+				Store:  st,
+				Token:  cfg.Token,
+				Enrich: worker,
+				Vault:  vault,
+				Log:    log,
+			})}
 			errCh := make(chan error, 1)
 			go func() {
 				log.Info("listening", "addr", cfg.Bind)
@@ -104,6 +112,17 @@ func startEnrichment(ctx context.Context, st *store.Store, cfg config.Config, lo
 	}()
 	worker.Backlog()
 	return worker
+}
+
+// openVault connects the read-only mnemo client, or reports that links are
+// off. Nothing else in the daemon depends on it being there.
+func openVault(cfg config.Config, log *slog.Logger) *mnemo.Client {
+	if cfg.Mnemo.URL == "" {
+		log.Warn("mnemo links are off — set [mnemo] url to link tasks to notes")
+		return nil
+	}
+	log.Info("mnemo links enabled", "url", cfg.Mnemo.URL)
+	return mnemo.New(cfg.Mnemo.URL, cfg.Mnemo.Token)
 }
 
 // runBackups snapshots the database at 03:00 local time each night. A failure

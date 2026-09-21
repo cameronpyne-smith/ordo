@@ -96,6 +96,7 @@ func newAddCmd(configPath *string) *cobra.Command {
 	cmd.Flags().IntVar(&req.EstimateMinutes, "estimate", 0, "estimated minutes")
 	cmd.Flags().StringVar(&every, "every", "", `repeat on a schedule: daily, "weekly on tue", "weekly on mon,thu", "monthly on 1", "monthly on last", "yearly on 03-15"`)
 	cmd.Flags().StringVar(&after, "after", "", "repeat an interval after each completion: 3d, 2w, 1m")
+	cmd.Flags().StringVar(&req.MnemoSlug, "link", "", "slug of the mnemo note this task is about")
 	return cmd
 }
 
@@ -424,6 +425,9 @@ func titleCell(t api.Task) string {
 	}
 	if t.Mnemo != nil {
 		title += " [[" + t.Mnemo.Slug + "]]"
+		if t.Mnemo.Missing {
+			title += " (missing)"
+		}
 	}
 	return title
 }

@@ -25,9 +25,47 @@ type Recur struct {
 	Rule string `json:"rule"`
 }
 
+// Link is the note a task points at. Missing is set only when the vault has
+// answered and the slug is not there; a vault that cannot be reached leaves
+// it false, because "I could not ask" is not "it is gone".
 type Link struct {
-	Slug  string `json:"slug"`
-	Title string `json:"title,omitempty"`
+	Slug    string `json:"slug"`
+	Title   string `json:"title,omitempty"`
+	Missing bool   `json:"missing,omitempty"`
+}
+
+// Hit is a note the vault offered, from a search or a similarity lookup.
+type Hit struct {
+	Slug        string  `json:"slug"`
+	Folder      string  `json:"folder,omitempty"`
+	Description string  `json:"description,omitempty"`
+	Score       float64 `json:"score,omitempty"`
+}
+
+// RelatedResponse answers one question — what does the vault say about this
+// task — in whichever of the three states the task is in. A linked task gets
+// its note and its neighbourhood; an unlinked or orphaned one gets the
+// candidates to link it to instead.
+type RelatedResponse struct {
+	Linked     bool     `json:"linked"`
+	Note       *Note    `json:"note,omitempty"`
+	Missing    bool     `json:"missing,omitempty"`
+	Similar    []Hit    `json:"similar,omitempty"`
+	Links      []string `json:"links,omitempty"`
+	Backlinks  []string `json:"backlinks,omitempty"`
+	Candidates []Hit    `json:"candidates,omitempty"`
+}
+
+type Note struct {
+	Slug        string   `json:"slug"`
+	Folder      string   `json:"folder,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Type        string   `json:"type,omitempty"`
+}
+
+type LinkRequest struct {
+	Slug string `json:"slug"`
 }
 
 type CreateRequest struct {
@@ -39,6 +77,7 @@ type CreateRequest struct {
 	Due             string `json:"due,omitempty"`
 	RecurKind       string `json:"recur_kind,omitempty"`
 	RecurRule       string `json:"recur_rule,omitempty"`
+	MnemoSlug       string `json:"mnemo_slug,omitempty"`
 }
 
 // EditRequest changes only the fields it carries. An absent or null field is
