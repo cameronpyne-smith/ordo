@@ -189,8 +189,13 @@ func validDue(due string) error {
 	if due == "" {
 		return nil
 	}
-	if _, err := time.ParseInLocation(DateFormat, due, Location); err != nil {
+	if _, err := ParseDate(due); err != nil {
 		return fmt.Errorf("due %q must be YYYY-MM-DD: %w", due, ErrInvalid)
 	}
 	return nil
+}
+
+// ParseDate reads a plain calendar date in Location.
+func ParseDate(date string) (time.Time, error) {
+	return time.ParseInLocation(DateFormat, date, Location)
 }
