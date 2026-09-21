@@ -85,6 +85,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		Priority:   store.Priority(q.Get("priority")),
 		Overdue:    q.Get("overdue") == "true",
 		Linked:     q.Get("linked") == "true",
+		Note:       q.Get("note"),
 		Recurring:  q.Get("recurring") == "true",
 	}
 	if f.All {
@@ -99,9 +100,9 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := api.FromTasks(tasks)
-	// The linked view is the one whose whole point is the links, so it is the
-	// one that pays to check them. A plain list stays a single database read.
-	if f.Linked {
+	// The linked views are the ones whose whole point is the links, so they
+	// are the ones that pay to check them. A plain list stays one read.
+	if f.Linked || f.Note != "" {
 		s.markOrphans(r.Context(), out)
 	}
 	writeJSON(w, http.StatusOK, api.ListResponse{Tasks: out, Count: len(out)})

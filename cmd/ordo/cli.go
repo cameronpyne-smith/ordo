@@ -52,6 +52,7 @@ func newListCmd(configPath *string) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "list every task regardless of status")
 	cmd.Flags().BoolVar(&f.Overdue, "overdue", false, "only tasks past their due date")
 	cmd.Flags().BoolVar(&f.Linked, "linked", false, "only tasks linked to a mnemo note")
+	cmd.Flags().StringVar(&f.Note, "note", "", "only tasks linked to this note, by slug")
 	cmd.Flags().BoolVar(&f.Recurring, "recurring", false, "only tasks that repeat")
 	cmd.Flags().StringVar(&f.Difficulty, "difficulty", "", "low, medium or high")
 	cmd.Flags().StringVar(&f.Priority, "priority", "", "low, normal or high")

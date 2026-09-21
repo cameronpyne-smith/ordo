@@ -218,3 +218,42 @@ func mustVault(t *testing.T, notes map[string]string) http.HandlerFunc {
 	h, _ := vault(t, notes)
 	return h
 }
+
+func TestNoteFilterGroupsAWorkstream(t *testing.T) {
+	notes := map[string]string{"career": "The quant plan", "latent": "The company"}
+	handler, _ := vault(t, notes)
+	h, _ := newLinkedServer(t, handler)
+
+	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Wooldridge ch. 2", MnemoSlug: "career"})
+	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Green Book drill", MnemoSlug: "career"})
+	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Ship the pricing model", MnemoSlug: "latent"})
+	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Bins"})
+
+	rec := request(t, h, http.MethodGet, "/tasks?note=career", nil)
+	var list api.ListResponse
+	decodeInto(t, rec, &list)
+	if list.Count != 2 {
+		t.Fatalf("count = %d, want the two tasks for that note", list.Count)
+	}
+	for _, task := range list.Tasks {
+		if task.Mnemo.Slug != "career" {
+			t.Fatalf("got %q, want only the named note", task.Mnemo.Slug)
+		}
+	}
+}
+
+func TestNoteFilterChecksTheNoteToo(t *testing.T) {
+	notes := map[string]string{"career": "The quant plan"}
+	handler, _ := vault(t, notes)
+	h, _ := newLinkedServer(t, handler)
+
+	request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Wooldridge ch. 2", MnemoSlug: "career"})
+	delete(notes, "career")
+
+	rec := request(t, h, http.MethodGet, "/tasks?note=career", nil)
+	var list api.ListResponse
+	decodeInto(t, rec, &list)
+	if list.Count != 1 || !list.Tasks[0].Mnemo.Missing {
+		t.Fatalf("got %+v, want the renamed note flagged", list.Tasks)
+	}
+}
