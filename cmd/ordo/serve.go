@@ -12,10 +12,12 @@ import (
 
 	"github.com/cameronpyne-smith/ordo/internal/config"
 	"github.com/cameronpyne-smith/ordo/internal/enrich"
+	"github.com/cameronpyne-smith/ordo/internal/mcp"
 	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/ollama"
 	"github.com/cameronpyne-smith/ordo/internal/server"
 	"github.com/cameronpyne-smith/ordo/internal/store"
+	"github.com/cameronpyne-smith/ordo/internal/todo"
 )
 
 const backupsKept = 30
@@ -63,16 +65,15 @@ func newServeCmd(configPath *string) *cobra.Command {
 			worker := startEnrichment(ctx, st, cfg, log)
 			vault := openVault(cfg, log)
 
+			svc := todo.New(todo.Options{Store: st, Enrich: worker, Vault: vault, Log: log})
 			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(server.Options{
-				Store:  st,
-				Token:  cfg.Token,
-				Enrich: worker,
-				Vault:  vault,
-				Log:    log,
+				Todo:  svc,
+				Token: cfg.Token,
+				MCP:   mcp.Handler(svc, log),
 			})}
 			errCh := make(chan error, 1)
 			go func() {
-				log.Info("listening", "addr", cfg.Bind)
+				log.Info("listening", "addr", cfg.Bind, "mcp", "/mcp")
 				errCh <- srv.ListenAndServe()
 			}()
 
@@ -92,7 +93,7 @@ func newServeCmd(configPath *string) *cobra.Command {
 // startEnrichment brings up the background reader of new tasks, or reports
 // why it is not running. It returns nil when there is no model configured,
 // which every other part of the daemon is built to tolerate.
-func startEnrichment(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger) server.Enqueuer {
+func startEnrichment(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger) todo.Enqueuer {
 	if cfg.Ollama.URL == "" || cfg.Ollama.Model == "" {
 		log.Warn("enrichment is off — set [ollama] url and model to have tasks read")
 		return nil
