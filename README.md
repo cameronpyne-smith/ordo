@@ -60,6 +60,7 @@ ordo add "Send the CV" --due 2026-09-25 --priority high
 ordo list                        # open tasks, in order
 ordo list --overdue --limit 5
 ordo list --recurring
+ordo list --note career-transition-quantitative-researcher
 ordo set 4 priority=high due=    # an empty value clears a field
 ordo done 4 --minutes 25
 ordo undo 4
@@ -133,6 +134,13 @@ A task links to a note when something remains after the task is finished.
 Bins: nothing remains, no link. "Write the quant CV": the note already
 exists, link it.
 
+**Nothing is copied.** A link is a pointer: the task lives here, the knowledge
+lives in mnemo, and there is no second copy of either to keep in step. ordo
+never reads tasks out of notes and never creates them from what it finds — it
+cannot write back, so anything it scraped would be a fact the vault kept
+getting wrong for ever. Tasks are created here, in a Claude session or at a
+prompt, and linked.
+
 ```sh
 ordo add "Rewrite the pricing model" --link latent
 ordo link 4                      # search the vault with the task's own words
@@ -161,8 +169,19 @@ closest notes
   ordo link 4 <slug>
 ```
 
-Only `ordo list --linked` checks the links, since that is the view whose point
-they are; a plain `ordo list` stays one database read. With mnemo unreachable
+`--note` names one note and lists what is in flight for it, which is how a
+long plan works: the note holds the whole programme, ordo holds the handful of
+session-sized tasks pulled out of it.
+
+```sh
+$ ordo list --note career-transition-quantitative-researcher
+ID  DUE         PRIORITY  DIFFICULTY  REPEATS  TITLE
+7   2026-09-22  normal    medium      daily    Green Book: 5 timed problems [[career-...]]
+9   2026-09-27  high      high        -        Wooldridge ch. 2, exercises [[career-...]]
+```
+
+Only `--linked` and `--note` check the links, since those are the views whose
+point they are; a plain `ordo list` stays one database read. With mnemo unreachable
 nothing is marked missing — "I could not ask" is not "it is gone" — and every
 command except the three link ones works as usual. `ordo unlink` works even
 then: cutting a link is ordo's own business.
