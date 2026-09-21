@@ -85,6 +85,7 @@ type Task struct {
 	RecurRule       string
 	MnemoSlug       string
 	MnemoTitle      string
+	PinnedOn        string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DoneAt          *time.Time
@@ -102,6 +103,10 @@ func (t *Task) Recurring() bool { return t.RecurKind != "" }
 
 // Linked reports whether this task points at a note in the vault.
 func (t *Task) Linked() bool { return t.MnemoSlug != "" }
+
+// PinnedFor reports whether this task was pinned to the given day. A pin
+// names a date, so yesterday's never speaks for today.
+func (t *Task) PinnedFor(day string) bool { return t.PinnedOn != "" && t.PinnedOn == day }
 
 // EffectivePriority resolves the unset case for ordering and display.
 func (t *Task) EffectivePriority() Priority {
@@ -130,6 +135,11 @@ func (t *Task) validate() error {
 	}
 	if t.EstimateMinutes < 0 {
 		return fmt.Errorf("estimate_minutes must be positive: %w", ErrInvalid)
+	}
+	if t.PinnedOn != "" {
+		if _, err := ParseDate(t.PinnedOn); err != nil {
+			return fmt.Errorf("pinned_on %q must be YYYY-MM-DD: %w", t.PinnedOn, ErrInvalid)
+		}
 	}
 	t.MnemoSlug = strings.TrimSpace(t.MnemoSlug)
 	t.MnemoTitle = strings.TrimSpace(t.MnemoTitle)

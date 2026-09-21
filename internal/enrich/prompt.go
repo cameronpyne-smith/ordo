@@ -17,12 +17,17 @@ var Schema = map[string]any{
 	"properties": map[string]any{
 		"difficulty": map[string]any{"type": "string", "enum": []string{"low", "medium", "high"}},
 		"priority":   map[string]any{"type": "string", "enum": []string{"low", "normal", "high"}},
+		"minutes":    map[string]any{"type": "integer"},
 		"due":        map[string]any{"type": "string"},
 		"recur_kind": map[string]any{"type": "string", "enum": []string{"", "every", "after"}},
 		"recur_rule": map[string]any{"type": "string"},
 	},
-	"required": []string{"difficulty", "priority", "due", "recur_kind", "recur_rule"},
+	"required": []string{"difficulty", "priority", "minutes", "due", "recur_kind", "recur_rule"},
 }
+
+// maxEstimate rejects a runaway number rather than letting it swallow a whole
+// day's budget. Anything genuinely longer than this is several tasks.
+const maxEstimate = 8 * 60
 
 const systemPrompt = `You read one item from a personal todo list and extract structured fields from it.
 Answer with the JSON object the schema describes and nothing else.
@@ -34,6 +39,9 @@ priority: how much it matters that this one gets done, judged from the task itse
   someone else waiting on it. low when nothing happens if it waits a month.
   normal for the rest. Decide between the three; do not answer normal merely
   because the task does not say which it is.
+minutes: how long one go at this takes, in whole minutes, judged from the task itself.
+  A quick errand is 5 to 15, something with a bit of setup is 30 to 60, a real session is 90 or
+  more. A repeating task means one occurrence, not the whole series. Use 0 when you cannot tell.
 due: the date the task is for, as YYYY-MM-DD. Resolve words like "tomorrow", "friday" or
   "next week" against today's date. Use "" when the task names no date.
 recur_kind: "every" when the task repeats on a fixed schedule, "after" when it repeats a fixed
@@ -62,6 +70,7 @@ func taskPrompt(t *store.Task) string {
 type extraction struct {
 	Difficulty string `json:"difficulty"`
 	Priority   string `json:"priority"`
+	Minutes    int    `json:"minutes"`
 	Due        string `json:"due"`
 	RecurKind  string `json:"recur_kind"`
 	RecurRule  string `json:"recur_rule"`
@@ -87,6 +96,13 @@ func (e extraction) inference(log *slog.Logger, id int64) store.Inference {
 	case "":
 	default:
 		log.Warn("model returned an unknown priority", "id", id, "priority", e.Priority)
+	}
+
+	switch {
+	case e.Minutes < 0 || e.Minutes > maxEstimate:
+		log.Warn("model returned an unusable estimate", "id", id, "minutes", e.Minutes)
+	default:
+		in.Estimate = e.Minutes
 	}
 
 	if e.Due != "" {

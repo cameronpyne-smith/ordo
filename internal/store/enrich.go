@@ -11,13 +11,15 @@ import (
 type Inference struct {
 	Difficulty Difficulty
 	Priority   Priority
+	Estimate   int
 	Due        string
 	RecurKind  RecurKind
 	RecurRule  string
 }
 
 func (i Inference) Empty() bool {
-	return i.Difficulty == "" && i.Priority == "" && i.Due == "" && i.RecurKind == ""
+	return i.Difficulty == "" && i.Priority == "" && i.Estimate == 0 &&
+		i.Due == "" && i.RecurKind == ""
 }
 
 // Enrich applies an inference and marks the task enriched. The mark is
@@ -33,6 +35,9 @@ func (s *Store) Enrich(id int64, in Inference) (*Task, error) {
 	}
 	if in.Priority != "" && t.Priority == "" {
 		t.Priority = in.Priority
+	}
+	if in.Estimate > 0 && t.EstimateMinutes == 0 {
+		t.EstimateMinutes = in.Estimate
 	}
 	if in.RecurKind != "" && !t.Recurring() {
 		t.RecurKind, t.RecurRule = in.RecurKind, in.RecurRule

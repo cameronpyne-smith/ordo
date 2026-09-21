@@ -79,6 +79,26 @@ var migrations = []string{
 	// Recording the due date an occurrence had makes undo exact rather than
 	// derived, and turns the history into a record of what was done on time.
 	`ALTER TABLE completions ADD COLUMN due TEXT;`,
+
+	// A pin is a date, not a flag: it says "this one, that day". A flag would
+	// quietly carry yesterday's intention into today, which is exactly the
+	// stale nagging a day view has to avoid. Preferences are one row, so the
+	// id is fixed at 1 and the table can never grow a second opinion.
+	`ALTER TABLE tasks ADD COLUMN pinned_on TEXT;
+	CREATE TABLE preferences (
+		id                INTEGER PRIMARY KEY CHECK (id = 1),
+		day_start         TEXT NOT NULL,
+		day_end           TEXT NOT NULL,
+		work_start        TEXT NOT NULL,
+		work_end          TEXT NOT NULL,
+		work_days         TEXT NOT NULL,
+		deep_start        TEXT NOT NULL,
+		deep_end          TEXT NOT NULL,
+		buffer_minutes    INTEGER NOT NULL,
+		min_block_minutes INTEGER NOT NULL,
+		max_minutes_day   INTEGER NOT NULL
+	);
+	CREATE INDEX tasks_pinned ON tasks(pinned_on);`,
 }
 
 func (s *Store) migrate() error {
@@ -115,7 +135,7 @@ func (s *Store) migrate() error {
 }
 
 const taskColumns = `id, title, notes, status, difficulty, priority, estimate_minutes, due,
-	recur_kind, recur_rule, mnemo_slug, mnemo_title, created_at, updated_at, done_at, enriched_at`
+	recur_kind, recur_rule, mnemo_slug, mnemo_title, pinned_on, created_at, updated_at, done_at, enriched_at`
 
 func (s *Store) Create(t *Task) (*Task, error) {
 	if t.Status == "" {
@@ -339,12 +359,13 @@ func (s *Store) save(t *Task) (*Task, error) {
 	t.UpdatedAt = Now()
 	_, err := s.db.Exec(`UPDATE tasks SET
 		title = ?, notes = ?, status = ?, difficulty = ?, priority = ?, estimate_minutes = ?,
-		due = ?, recur_kind = ?, recur_rule = ?, mnemo_slug = ?, mnemo_title = ?,
+		due = ?, recur_kind = ?, recur_rule = ?, mnemo_slug = ?, mnemo_title = ?, pinned_on = ?,
 		updated_at = ?, done_at = ?, enriched_at = ?
 		WHERE id = ?`,
 		t.Title, nullStr(t.Notes), string(t.Status), nullStr(string(t.Difficulty)), nullStr(string(t.Priority)),
 		nullInt(t.EstimateMinutes), nullStr(t.Due), nullStr(string(t.RecurKind)), nullStr(t.RecurRule),
-		nullStr(t.MnemoSlug), nullStr(t.MnemoTitle), stamp(t.UpdatedAt), stampPtr(t.DoneAt), stampPtr(t.EnrichedAt),
+		nullStr(t.MnemoSlug), nullStr(t.MnemoTitle), nullStr(t.PinnedOn),
+		stamp(t.UpdatedAt), stampPtr(t.DoneAt), stampPtr(t.EnrichedAt),
 		t.ID)
 	if err != nil {
 		return nil, fmt.Errorf("saving task %d: %w", t.ID, err)
@@ -571,13 +592,14 @@ func scanTask(row scanner) (*Task, error) {
 		recurRule  sql.NullString
 		mnemoSlug  sql.NullString
 		mnemoTitle sql.NullString
+		pinnedOn   sql.NullString
 		createdAt  string
 		updatedAt  string
 		doneAt     sql.NullString
 		enrichedAt sql.NullString
 	)
 	if err := row.Scan(&t.ID, &t.Title, &notes, &t.Status, &difficulty, &priority, &estimate, &due,
-		&recurKind, &recurRule, &mnemoSlug, &mnemoTitle, &createdAt, &updatedAt, &doneAt, &enrichedAt); err != nil {
+		&recurKind, &recurRule, &mnemoSlug, &mnemoTitle, &pinnedOn, &createdAt, &updatedAt, &doneAt, &enrichedAt); err != nil {
 		return nil, err
 	}
 	t.Notes = notes.String
@@ -589,6 +611,7 @@ func scanTask(row scanner) (*Task, error) {
 	t.RecurRule = recurRule.String
 	t.MnemoSlug = mnemoSlug.String
 	t.MnemoTitle = mnemoTitle.String
+	t.PinnedOn = pinnedOn.String
 	t.CreatedAt = parseStamp(createdAt)
 	t.UpdatedAt = parseStamp(updatedAt)
 	if doneAt.Valid {
