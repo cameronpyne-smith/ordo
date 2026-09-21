@@ -112,6 +112,32 @@ func NewServer(svc *todo.Service) *sdk.Server {
 			"Finishing something is todo_done; use this only for a task that should never have existed.",
 	}, t.remove)
 
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "todo_today",
+		Description: "Plan a day: the tasks that fit its free time, each placed at a time with the reason " +
+			"it landed there, plus what the calendar has taken, what is left over, and which tasks " +
+			"were considered and did not fit. The plan is computed fresh and never stored, so it is " +
+			"always the current answer rather than a decision someone made earlier. Read this before " +
+			"answering what today looks like.",
+	}, t.today)
+
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "todo_pin",
+		Description: "Claim a task for a particular day, ahead of whatever ordo's own order would have " +
+			"chosen. A pin is the one input the daemon cannot work out for itself, so use it when I " +
+			"say I am doing something today. It names a date, so it never carries into tomorrow by " +
+			"itself. Pass pinned false to release one.",
+	}, t.pin)
+
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "todo_preferences",
+		Description: "Read the shape of my day, or change it. Called with no fields it reads: working " +
+			"hours, the window the day may use, the deep-work window demanding tasks prefer, the " +
+			"buffer between blocks and the daily cap. Called with fields it changes those and returns " +
+			"the result. This is what \"move deep work to mornings\" or \"I finish at five on Fridays\" " +
+			"means; read it before changing it, since a field left out keeps its current value.",
+	}, t.prefs)
+
 	return srv
 }
 

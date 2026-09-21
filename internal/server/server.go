@@ -50,6 +50,11 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/unlink", s.handleUnlink)
 	mux.HandleFunc("GET /tasks/{id}/related", s.handleRelated)
 	mux.HandleFunc("DELETE /tasks/{id}", s.handleDelete)
+	mux.HandleFunc("POST /tasks/{id}/pin", s.handlePin)
+	mux.HandleFunc("POST /tasks/{id}/unpin", s.handleUnpin)
+	mux.HandleFunc("GET /today", s.handleToday)
+	mux.HandleFunc("GET /preferences", s.handlePreferences)
+	mux.HandleFunc("POST /preferences", s.handleSetPreferences)
 	mux.HandleFunc("GET /status", s.handleStatus)
 	return s.auth(mux)
 }

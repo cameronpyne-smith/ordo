@@ -41,6 +41,10 @@ func newRootCmd() *cobra.Command {
 		newUnlinkCmd(&configPath),
 		newRelatedCmd(&configPath),
 		newRemoveCmd(&configPath),
+		newTodayCmd(&configPath),
+		newPinCmd(&configPath),
+		newUnpinCmd(&configPath),
+		newPrefsCmd(&configPath),
 		newStatusCmd(&configPath),
 		newBackupCmd(&configPath),
 	)

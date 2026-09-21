@@ -122,6 +122,35 @@ func (c *Client) Delete(id int64) (*api.DeleteResponse, error) {
 	return &resp, c.do(http.MethodDelete, "/tasks/"+strconv.FormatInt(id, 10), nil, &resp)
 }
 
+func (c *Client) Pin(id int64, day string) (*api.Task, error) {
+	var resp api.Task
+	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/pin", api.PinRequest{Day: day}, &resp)
+}
+
+func (c *Client) Unpin(id int64) (*api.Task, error) {
+	var resp api.Task
+	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/unpin", nil, &resp)
+}
+
+func (c *Client) Today(day string) (*api.TodayResponse, error) {
+	path := "/today"
+	if day != "" {
+		path += "?day=" + url.QueryEscape(day)
+	}
+	var resp api.TodayResponse
+	return &resp, c.do(http.MethodGet, path, nil, &resp)
+}
+
+func (c *Client) Preferences() (*api.Preferences, error) {
+	var resp api.Preferences
+	return &resp, c.do(http.MethodGet, "/preferences", nil, &resp)
+}
+
+func (c *Client) SetPreferences(req api.PreferencesRequest) (*api.Preferences, error) {
+	var resp api.Preferences
+	return &resp, c.do(http.MethodPost, "/preferences", req, &resp)
+}
+
 func (c *Client) Status() (*api.StatusResponse, error) {
 	var resp api.StatusResponse
 	return &resp, c.do(http.MethodGet, "/status", nil, &resp)

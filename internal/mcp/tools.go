@@ -141,3 +141,66 @@ func (t *toolServer) related(ctx context.Context, _ *sdk.CallToolRequest, args I
 	resp, err := t.todo.Related(ctx, args.ID)
 	return nil, resp, err
 }
+
+type TodayArgs struct {
+	Day string `json:"day,omitempty" jsonschema:"the day to plan, as YYYY-MM-DD; today when left out"`
+}
+
+type PinArgs struct {
+	ID  int64  `json:"id" jsonschema:"the task id"`
+	Day string `json:"day,omitempty" jsonschema:"the day to pin it to as YYYY-MM-DD, today when left out, or empty with pinned false to unpin"`
+	// Pinning and unpinning are one tool for the same reason linking and
+	// unlinking are: from the model's side it is one decision about whether
+	// this task is claimed for a day.
+	Pinned *bool `json:"pinned,omitempty" jsonschema:"false unpins the task; true or absent pins it"`
+}
+
+type PrefsArgs struct {
+	DayStart        *string `json:"day_start,omitempty" jsonschema:"HH:MM, the earliest anything may be scheduled"`
+	DayEnd          *string `json:"day_end,omitempty" jsonschema:"HH:MM, the latest anything may be scheduled"`
+	WorkStart       *string `json:"work_start,omitempty" jsonschema:"HH:MM the job starts; this time is never scheduled on a work day"`
+	WorkEnd         *string `json:"work_end,omitempty" jsonschema:"HH:MM the job ends"`
+	WorkDays        *string `json:"work_days,omitempty" jsonschema:"the days the job takes, as mon,tue,wed,thu,fri; empty for none"`
+	DeepStart       *string `json:"deep_start,omitempty" jsonschema:"HH:MM the deep-work window opens; demanding tasks prefer it"`
+	DeepEnd         *string `json:"deep_end,omitempty" jsonschema:"HH:MM the deep-work window closes"`
+	BufferMinutes   *int    `json:"buffer_minutes,omitempty" jsonschema:"minutes left between consecutive blocks"`
+	MinBlockMinutes *int    `json:"min_block_minutes,omitempty" jsonschema:"the shortest stretch worth scheduling into"`
+	MaxMinutesDay   *int    `json:"max_minutes_per_day,omitempty" jsonschema:"the most minutes of tasks to plan in one day"`
+}
+
+func (t *toolServer) today(ctx context.Context, _ *sdk.CallToolRequest, args TodayArgs) (*sdk.CallToolResult, api.TodayResponse, error) {
+	resp, err := t.todo.Today(ctx, args.Day)
+	return nil, resp, err
+}
+
+func (t *toolServer) pin(_ context.Context, _ *sdk.CallToolRequest, args PinArgs) (*sdk.CallToolResult, api.Task, error) {
+	if args.Pinned != nil && !*args.Pinned {
+		task, err := t.todo.Unpin(args.ID)
+		return nil, task, err
+	}
+	task, err := t.todo.Pin(args.ID, args.Day)
+	return nil, task, err
+}
+
+func (t *toolServer) prefs(_ context.Context, _ *sdk.CallToolRequest, args PrefsArgs) (*sdk.CallToolResult, api.Preferences, error) {
+	req := api.PreferencesRequest{
+		DayStart:        args.DayStart,
+		DayEnd:          args.DayEnd,
+		WorkStart:       args.WorkStart,
+		WorkEnd:         args.WorkEnd,
+		WorkDays:        args.WorkDays,
+		DeepStart:       args.DeepStart,
+		DeepEnd:         args.DeepEnd,
+		BufferMinutes:   args.BufferMinutes,
+		MinBlockMinutes: args.MinBlockMinutes,
+		MaxMinutesDay:   args.MaxMinutesDay,
+	}
+	// An empty call is a read, which is what a model wants first anyway:
+	// see the day before changing it.
+	if req.Empty() {
+		p, err := t.todo.Preferences()
+		return nil, p, err
+	}
+	p, err := t.todo.SetPreferences(req)
+	return nil, p, err
+}

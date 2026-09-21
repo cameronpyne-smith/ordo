@@ -137,7 +137,8 @@ func TestToolsAreAllDescribed(t *testing.T) {
 	slices.Sort(names)
 	want := []string{
 		"todo_add", "todo_delete", "todo_done", "todo_link",
-		"todo_list", "todo_related", "todo_set", "todo_undo",
+		"todo_list", "todo_pin", "todo_preferences", "todo_related",
+		"todo_set", "todo_today", "todo_undo",
 	}
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools = %v, want %v", names, want)

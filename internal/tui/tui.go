@@ -31,6 +31,7 @@ const (
 	modeLink
 	modeConfirm
 	modeHelp
+	modeDay
 )
 
 // The filters are the whole of the TUI's cleverness, deliberately: each one
@@ -72,6 +73,9 @@ type Model struct {
 	related   *api.RelatedResponse
 	candidate int
 	confirm   int64
+
+	day       *api.TodayResponse
+	dayCursor int
 
 	message string
 	failure string
@@ -140,10 +144,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pending {
 			next = refreshPending
 		}
+		if m.mode == modeDay {
+			return m, tea.Batch(m.fetchDay(), tick(next))
+		}
 		return m, tea.Batch(m.fetch(), tick(next))
 
 	case tasksMsg:
 		return m.applyTasks(msg), nil
+
+	case dayMsg:
+		return m.applyDay(msg.resp, msg.err), nil
+
+	case dayActedMsg:
+		if msg.err != nil {
+			m.failure = msg.err.Error()
+			return m, nil
+		}
+		m = m.applyDay(msg.resp, nil)
+		m.message = msg.note
+		return m, nil
 
 	case relatedMsg:
 		if msg.err != nil {
@@ -185,6 +204,16 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 	return m
 }
 
+func (m Model) applyDay(resp *api.TodayResponse, err error) Model {
+	if err != nil {
+		m.failure = err.Error()
+		return m
+	}
+	m.failure, m.day = "", resp
+	m.dayCursor = clampDay(dayEntries(resp), m.dayCursor)
+	return m
+}
+
 // layout turns the daemon's ordered list into printable rows, inserting a
 // heading whenever the section changes. Because the order is already right,
 // a section can never be interleaved.
@@ -208,6 +237,8 @@ func layout(tasks []api.Task) []row {
 
 func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
+	case modeDay:
+		return m.keyDay(msg)
 	case modeAdd:
 		return m.keyAdd(msg)
 	case modeLink:
@@ -272,6 +303,17 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			resp, err := c.Related(t.ID)
 			return relatedMsg{resp: resp, err: err}
 		}
+	case "t":
+		m.mode, m.message = modeDay, ""
+		return m, m.fetchDay()
+	case "p":
+		return m.act(func(c *client.Client, id int64) (string, error) {
+			t, err := c.Pin(id, "")
+			if err != nil {
+				return "", err
+			}
+			return "pinned to " + t.PinnedOn, nil
+		})
 	case "x":
 		t, ok := m.selected()
 		if !ok {

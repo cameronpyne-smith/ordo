@@ -36,6 +36,9 @@ func (m Model) View() string {
 	if height < 10 {
 		height = 24
 	}
+	if m.mode == modeDay {
+		return m.dayView(width, height)
+	}
 
 	header := m.header(width)
 	footer := m.footer(width)
@@ -250,7 +253,7 @@ func (m Model) footer(width int) string {
 		status = errorStyle.Render(m.failure)
 	}
 	return rule(width) + "\n" + truncate(strings.Join(keys, "  "), width) + "\n" +
-		pad(faintStyle.Render("a add · d done · u undo · e enrich · l note · x delete · r refresh · ? help · q quit"), status, width)
+		pad(faintStyle.Render("a add · d done · u undo · e enrich · l note · p pin · t today · x delete · ? help · q quit"), status, width)
 }
 
 func (m Model) help() string {
@@ -272,6 +275,11 @@ func (m Model) help() string {
 		"  u   undo the last completion",
 		"  e   read it with the model again; it only ever fills empty fields",
 		"  x   delete permanently, after a confirmation",
+		"",
+		headingStyle.Render("the day"),
+		"  t   the day view: what fits in today's free time, each block placed",
+		"      with the reason it landed there. p pins a task to today from the",
+		"      list, and unpins it from the day. The daemon plans it, not this.",
 		"",
 		headingStyle.Render("mnemo"),
 		"  l   the note this task points at, its neighbourhood, or the notes it",
