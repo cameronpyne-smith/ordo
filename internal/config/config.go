@@ -14,13 +14,14 @@ import (
 // Config is one schema for every machine. The box fills in the daemon keys;
 // a laptop fills in Server and Token and leaves the rest at their defaults.
 type Config struct {
-	Bind      string `toml:"bind"`
-	Server    string `toml:"server"`
-	Token     string `toml:"token"`
-	DB        string `toml:"db"`
-	BackupDir string `toml:"backup_dir"`
-	Mnemo     Mnemo  `toml:"mnemo"`
-	Ollama    Ollama `toml:"ollama"`
+	Bind      string   `toml:"bind"`
+	Server    string   `toml:"server"`
+	Token     string   `toml:"token"`
+	DB        string   `toml:"db"`
+	BackupDir string   `toml:"backup_dir"`
+	Mnemo     Mnemo    `toml:"mnemo"`
+	Ollama    Ollama   `toml:"ollama"`
+	Calendar  Calendar `toml:"calendar"`
 }
 
 type Mnemo struct {
@@ -31,6 +32,13 @@ type Mnemo struct {
 type Ollama struct {
 	URL   string `toml:"url"`
 	Model string `toml:"model"`
+}
+
+// Calendar is a published ICS feed, read and never written. Leaving it empty
+// is a normal configuration: the scheduler then works from working hours
+// alone, which already describes most of a week.
+type Calendar struct {
+	ICSURL string `toml:"ics_url"`
 }
 
 func Default() Config {
