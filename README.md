@@ -54,6 +54,7 @@ token  = "..."
 ## Commands
 
 ```sh
+ordo                             # the terminal view
 ordo add "Put the bins out" --every "weekly on tue" --difficulty low
 ordo add "Water the plants" --after 3d
 ordo add "Send the CV" --due 2026-09-25 --priority high
@@ -186,6 +187,91 @@ nothing is marked missing — "I could not ask" is not "it is gone" — and ever
 command except the three link ones works as usual. `ordo unlink` works even
 then: cutting a link is ordo's own business.
 
+## The terminal
+
+Bare `ordo` opens the list in the terminal. It is a thin client like every
+other command: the daemon decides the order, and the terminal only groups it
+into **overdue**, **today**, **this week**, **later** and **someday**. A
+section can never reorder anything, because a task falls into the first one
+it qualifies for and the daemon's order is kept inside it.
+
+```
+ordo · open                                                            6 shown
+────────────────────────────────────────────────────────────────────────────
+overdue
+▸  11 2026-09-19 ! Send the quant CV to the recrui [[career-transition-quant…
+today
+   10 2026-09-21 Water the plants every 3 days
+this week
+    9 2026-09-22 Put the bins out every tuesday
+someday
+   14            Rewrite the latent pricing model [[latent]] (missing)
+   16            Renew the passport ~
+────────────────────────────────────────────────────────────────────────────
+Send the quant CV to the recruiter by Friday
+overdue by 2 days · high priority · low difficulty, so a quick win
+[[career-transition-quantitative-researcher]] The quant plan
+────────────────────────────────────────────────────────────────────────────
+1 open  2 overdue  3 quick wins  4 high priority  5 linked  6 recurring  7 done
+a add · d done · u undo · e enrich · l note · x delete · r refresh · ? help · q quit
+```
+
+The line under the list is the point of the thing: it names the fields that
+put the selected task where it is, so a position never has to be taken on
+trust. `~` means the model has not read the task yet.
+
+The number keys are the filters, and they are filters rather than a
+conversation on purpose — "I have twenty minutes" is `3`, not a question.
+`a` adds a task: type the sentence and the daemon extracts the rest of it,
+so the new row appears bare and fills in a second or two later while you
+watch. `l` opens what mnemo knows about the selected task — the note and its
+neighbourhood if it is linked, the notes it could point at if it is not, or
+the notes it might have become if its own has been renamed away.
+
+While anything on screen is still unread the list refreshes every 2 seconds;
+once everything has been read it drops to 30.
+
+## Claude
+
+The daemon serves MCP at `/mcp` on the same port, behind the same bearer
+token, so a Claude session gets the same operations as the CLI: `todo_list`,
+`todo_add`, `todo_done`, `todo_undo`, `todo_set`, `todo_link`,
+`todo_related`, `todo_delete`.
+
+```sh
+claude mcp add --transport http ordo http://100.103.58.27:7930/mcp \
+  --header "Authorization: Bearer <the token from your ordo config>"
+```
+
+The tool schemas carry the enums the daemon enforces, so a wrong difficulty
+or priority is refused before the call is made rather than coming back as a
+400.
+
+**This is the point of the phase.** With ordo and mnemo in the same session,
+an action item becomes a task the moment it appears in the conversation,
+created by something that understood the sentence — instead of being written
+into a note and having to be found again later. mnemo goes back to being
+knowledge; ordo holds what is to be done.
+
+A paragraph worth having in `CLAUDE.md` alongside the mnemo one:
+
+```markdown
+## ordo — personal todo daemon
+The `todo_*` MCP tools are my task list. mnemo remembers, ordo orders.
+
+- Anything I say I need to do is a `todo_add`, not a note. Pass the whole
+  sentence as the title and leave the other fields alone: the daemon reads
+  the sentence with a local model and fills in due date, difficulty,
+  recurrence and priority itself.
+- `todo_list` before answering anything about what to do next, and re-read it
+  rather than remembering it — fields fill in asynchronously.
+- Reprioritising, planning a week and "what should I focus on" are yours:
+  read the list, then `todo_set`. Editing priority is welcome, inference
+  never overwrites a field that is already set.
+- When a task comes out of a note, `todo_link` it to that slug. The note is
+  the thinking; the tasks are what is in flight from it.
+```
+
 ## Deploy
 
 The repo is cloned on the box and built there.
@@ -219,7 +305,10 @@ With the unit installed, an update is `git pull`, `go build`, then
 | `internal/enrich` | The background worker that reads new tasks |
 | `internal/mnemo` | The read-only vault client |
 | `internal/api` | Wire types and conversion |
+| `internal/todo` | What ordo does, independent of how it is asked |
 | `internal/server` | HTTP routes, bearer auth |
+| `internal/mcp` | The MCP tools, mounted at `/mcp` |
+| `internal/tui` | The terminal view |
 | `internal/client` | HTTP client used by every CLI command |
 | `internal/config` | The one config schema |
 | `cmd/ordo` | Cobra commands |
