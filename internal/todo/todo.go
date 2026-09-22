@@ -47,11 +47,19 @@ type Enqueuer interface {
 	Queue(id int64)
 }
 
+// Nudger is told that the plan may have changed. Like Enqueuer it may be
+// nil: publishing the day somewhere is optional, and the service does not
+// know or care where.
+type Nudger interface {
+	Nudge()
+}
+
 type Options struct {
 	Store    *store.Store
 	Enrich   Enqueuer
 	Vault    *mnemo.Client
 	Calendar *calendar.Client
+	Publish  Nudger
 	Log      *slog.Logger
 }
 
@@ -60,6 +68,7 @@ type Service struct {
 	enrich   Enqueuer
 	vault    *mnemo.Client
 	calendar *calendar.Client
+	publish  Nudger
 	log      *slog.Logger
 }
 
@@ -73,6 +82,7 @@ func New(opts Options) *Service {
 		enrich:   opts.Enrich,
 		vault:    opts.Vault,
 		calendar: opts.Calendar,
+		publish:  opts.Publish,
 		log:      log,
 	}
 }
@@ -124,6 +134,7 @@ func (s *Service) Create(ctx context.Context, req api.CreateRequest) (api.Task, 
 		return api.Task{}, err
 	}
 	s.queue(t.ID)
+	s.changed()
 	return api.FromTask(t), nil
 }
 
@@ -142,6 +153,7 @@ func (s *Service) Edit(id int64, req api.EditRequest) (api.Task, error) {
 	if edit.TitleChanged(before.Title) {
 		s.queue(t.ID)
 	}
+	s.changed()
 	return api.FromTask(t), nil
 }
 
@@ -150,6 +162,7 @@ func (s *Service) Done(id int64, minutes int) (api.Task, error) {
 	if err != nil {
 		return api.Task{}, err
 	}
+	s.changed()
 	return api.FromTask(t), nil
 }
 
@@ -158,10 +171,17 @@ func (s *Service) Undo(id int64) (api.Task, error) {
 	if err != nil {
 		return api.Task{}, err
 	}
+	s.changed()
 	return api.FromTask(t), nil
 }
 
-func (s *Service) Delete(id int64) error { return s.store.Delete(id) }
+func (s *Service) Delete(id int64) error {
+	if err := s.store.Delete(id); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
 
 // Enrich puts a task back in front of the model on demand, which is the way
 // out of a bad extraction: clear the field that is wrong and ask again.
@@ -334,6 +354,14 @@ func (s *Service) markOrphans(ctx context.Context, tasks []api.Task) {
 func (s *Service) queue(id int64) {
 	if s.enrich != nil {
 		s.enrich.Queue(id)
+	}
+}
+
+// changed is called after anything the plan is built from moves. It is
+// nil-safe for the same reason queue is.
+func (s *Service) changed() {
+	if s.publish != nil {
+		s.publish.Nudge()
 	}
 }
 

@@ -13,9 +13,11 @@ import (
 	"github.com/cameronpyne-smith/ordo/internal/calendar"
 	"github.com/cameronpyne-smith/ordo/internal/config"
 	"github.com/cameronpyne-smith/ordo/internal/enrich"
+	"github.com/cameronpyne-smith/ordo/internal/gcal"
 	"github.com/cameronpyne-smith/ordo/internal/mcp"
 	"github.com/cameronpyne-smith/ordo/internal/mnemo"
 	"github.com/cameronpyne-smith/ordo/internal/ollama"
+	"github.com/cameronpyne-smith/ordo/internal/publish"
 	"github.com/cameronpyne-smith/ordo/internal/server"
 	"github.com/cameronpyne-smith/ordo/internal/store"
 	"github.com/cameronpyne-smith/ordo/internal/todo"
@@ -67,7 +69,8 @@ func newServeCmd(configPath *string) *cobra.Command {
 				log.Warn("backup_dir not set — no snapshots are being taken")
 			}
 
-			worker := startEnrichment(ctx, st, cfg, log)
+			publisher := startPublisher(ctx, cfg, log)
+			worker := startEnrichment(ctx, st, cfg, log, func(int64) { publisher.Nudge() })
 			vault := openVault(cfg, log)
 
 			diary := calendar.New(cfg.Calendar.ICSURL, log)
@@ -79,8 +82,10 @@ func newServeCmd(configPath *string) *cobra.Command {
 				Enrich:   worker,
 				Vault:    vault,
 				Calendar: diary,
+				Publish:  publisher,
 				Log:      log,
 			})
+			go publisher.Run(ctx, svc)
 			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(server.Options{
 				Todo:  svc,
 				Token: cfg.Token,
@@ -109,13 +114,14 @@ func newServeCmd(configPath *string) *cobra.Command {
 // startEnrichment brings up the background reader of new tasks, or reports
 // why it is not running. It returns nil when there is no model configured,
 // which every other part of the daemon is built to tolerate.
-func startEnrichment(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger) todo.Enqueuer {
+func startEnrichment(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger, onEnriched func(int64)) todo.Enqueuer {
 	if cfg.Ollama.URL == "" || cfg.Ollama.Model == "" {
 		log.Warn("enrichment is off — set [ollama] url and model to have tasks read")
 		return nil
 	}
 	model := ollama.New(cfg.Ollama.URL, cfg.Ollama.Model)
 	worker := enrich.New(st, model, log)
+	worker.OnEnriched = onEnriched
 	go worker.Run(ctx)
 	// The check is only worth a log line, but it is the difference between
 	// seeing the wrong model name at startup and wondering for a week why
@@ -129,6 +135,28 @@ func startEnrichment(ctx context.Context, st *store.Store, cfg config.Config, lo
 	}()
 	worker.Backlog()
 	return worker
+}
+
+// startPublisher prepares the calendar the day is written to, or reports why
+// it is not. It returns nil when publishing is not configured, and every
+// call on a nil publisher is a no-op, so the rest of the daemon is the same
+// either way.
+func startPublisher(ctx context.Context, cfg config.Config, log *slog.Logger) *publish.Publisher {
+	c := cfg.Calendar
+	if c.PublishTo == "" && c.ServiceAccount == "" {
+		return nil
+	}
+	if c.PublishTo == "" || c.ServiceAccount == "" {
+		log.Warn("publishing is off — set both [calendar] publish_to and service_account")
+		return nil
+	}
+	cal, err := gcal.New(ctx, gcal.Options{ServiceAccount: c.ServiceAccount, Calendar: c.PublishTo})
+	if err != nil {
+		log.Error("publishing is off", "error", err)
+		return nil
+	}
+	log.Info("publishing the day to a calendar", "calendar", c.PublishTo, "days", c.PublishDays)
+	return publish.New(cal, c.PublishDays, log)
 }
 
 // openVault connects the read-only mnemo client, or reports that links are

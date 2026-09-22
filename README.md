@@ -42,7 +42,9 @@ url   = "http://127.0.0.1:11434"
 model = "qwen3.6:35b"
 
 [calendar]
-ics_url = "https://calendar.example/private-xxxx/basic.ics"
+ics_url         = "https://calendar.google.com/calendar/ical/.../private-xxxx/basic.ics"
+publish_to      = "xxxx@group.calendar.google.com"
+service_account = "/home/you/.config/ordo/google.json"
 ```
 
 Laptop:
@@ -283,7 +285,9 @@ up with it, so a field the model fills in appears without reopening it.
 
 `ordo today` plans one day. It takes the hours the day is available, cuts out
 work and whatever the calendar says is taken, and fills what is left from the
-list in the daemon's own order.
+list in the daemon's own order. A plan for today starts from now, rounded up
+to the next five minutes: asked at three in the afternoon, it does not put
+anything at seven in the morning.
 
 ```
 $ ordo today --why
@@ -340,14 +344,16 @@ not a silent no-op.
 
 ## The calendar
 
-`[calendar] ics_url` is a published ICS feed, read and never written. ordo
-does not put blocks in your diary: a scheduler that writes to a calendar you
-do not yet trust is one you turn off.
+The calendar has two directions, and they are two different calendars.
 
-**A feed is optional and its absence is normal**, not a degraded state.
-Working hours alone already describe most of a week, and the packer answers
-the same way with or without one. A feed that is configured and unreadable
-costs the plan some knowledge and says so, rather than failing the request.
+**Reading.** `[calendar] ics_url` is a published ICS feed of your own
+calendar, the one with your commitments in it. The scheduler reads it for
+what is already taken and never writes to it.
+
+A feed is optional and its absence is normal, not a degraded state. Working
+hours alone already describe most of a week, and the packer answers the same
+way with or without one. A feed that is configured and unreadable costs the
+plan some knowledge and says so, rather than failing the request.
 
 Recurring events, exclusions, all-day events, durations instead of end times,
 and events marked free or cancelled are all handled: most of what fills a
@@ -358,6 +364,45 @@ Any provider with a private ICS address works. Point it at a personal
 calendar rather than a work one: a corporate tenant usually blocks publishing
 anyway, and ordo only needs to know when you are busy, which `work_start` and
 `work_end` already say for the job itself.
+
+**Publishing.** `publish_to` is a Google calendar that exists for ordo alone.
+The daemon keeps it equal to the plan: one event per block, the task as the
+title and the reason as the description, so a block on your phone still says
+why it is there. It is reconciled rather than appended to — every pass
+recomputes the day, lists what the calendar has, and inserts, patches or
+removes until the two match — so a block that moves, moves, and a task you
+finish disappears. A pass runs at startup, two seconds after anything the
+plan is built from changes, and every five minutes regardless, because a plan
+for today moves with the clock even when the list does not.
+
+ordo only touches events it made, which it marks with a private property no
+calendar app shows. Anything you add to that calendar by hand is left alone.
+Blocks are transparent, so they never make you look busy to anyone who can
+see the calendar, and reminders follow the calendar's own defaults.
+
+The two calendars must be different. If ordo published into the calendar it
+reads, it would see its own blocks as busy time and plan around them.
+
+Publishing needs a service account: a robot identity with a JSON key, which
+suits a daemon far better than a browser sign-in whose tokens expire. Once:
+
+1. At console.cloud.google.com make a project, and under **APIs & Services →
+   Library** enable the **Google Calendar API**.
+2. Under **IAM & Admin → Service Accounts** create one (no roles are needed),
+   open it, and under **Keys → Add key → JSON** download its key. Put the file
+   on the box, readable only by the daemon's user, and set `service_account`
+   to its path.
+3. In Google Calendar create a calendar called `ordo`. In its settings, under
+   **Share with specific people or groups**, add the service account's email
+   — the `...@...iam.gserviceaccount.com` address from the key — with **Make
+   changes to events**.
+4. Further down the same page, under **Integrate calendar**, copy the
+   **Calendar ID** into `publish_to`.
+
+Restart, and the log says `publishing the day to a calendar` and then what
+the first pass did. `publish_days` widens the horizon past today; the default
+of one is deliberate, since tomorrow's plan is made as if nothing were
+finished today and would show the same tasks twice.
 
 ## Claude
 
@@ -462,6 +507,8 @@ rewrites it.
 | `internal/mnemo` | The read-only vault client |
 | `internal/calendar` | The read-only ICS feed reader |
 | `internal/schedule` | Free windows and the deterministic day packer |
+| `internal/gcal` | The Google Calendar client, as a service account |
+| `internal/publish` | Keeps the published calendar equal to the plan |
 | `internal/api` | Wire types and conversion |
 | `internal/todo` | What ordo does, independent of how it is asked |
 | `internal/server` | HTTP routes, bearer auth |

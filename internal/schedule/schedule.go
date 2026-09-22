@@ -93,6 +93,12 @@ func Plan(o Options) (Day, error) {
 		return Day{}, fmt.Errorf("planning %q: %w", o.Day, store.ErrInvalid)
 	}
 	free := Windows(date, o.Prefs, o.Busy)
+	// A plan for today starts now. Laying blocks into hours already gone
+	// answers "what should I have done", which nobody asks, and a calendar
+	// this is published to would show the morning's plan all afternoon.
+	if now := store.Now(); o.Day == now.Format(store.DateFormat) {
+		free = clip(free, ceil(now, clipGrain), o.Prefs.MinBlockMinutes)
+	}
 	day := Day{
 		Date:   o.Day,
 		Busy:   o.Busy,
@@ -277,6 +283,36 @@ func Windows(date time.Time, p store.Preferences, busy []calendar.Busy) []Window
 		}
 	}
 	return out
+}
+
+// clipGrain keeps a plan made mid-afternoon from starting at 15:03.
+const clipGrain = 5 * time.Minute
+
+// clip drops what is before from and shortens what straddles it, then
+// applies the same floor Windows does, since a sliver of a window is no more
+// usable for having been whole a moment ago.
+func clip(windows []Window, from time.Time, minBlock int) []Window {
+	out := make([]Window, 0, len(windows))
+	for _, w := range windows {
+		if !w.End.After(from) {
+			continue
+		}
+		if w.Start.Before(from) {
+			w.Start = from
+		}
+		if w.Minutes() >= minBlock {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+func ceil(t time.Time, grain time.Duration) time.Time {
+	r := t.Truncate(grain)
+	if r.Before(t) {
+		r = r.Add(grain)
+	}
+	return r
 }
 
 func subtract(windows []Window, start, end time.Time) []Window {

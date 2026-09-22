@@ -34,11 +34,16 @@ type Ollama struct {
 	Model string `toml:"model"`
 }
 
-// Calendar is a published ICS feed, read and never written. Leaving it empty
-// is a normal configuration: the scheduler then works from working hours
-// alone, which already describes most of a week.
+// Calendar has two directions. ICSURL is a published feed the scheduler
+// reads for what is already taken; leaving it empty is a normal
+// configuration, since working hours alone describe most of a week.
+// PublishTo is a Google calendar of ordo's own that the plan is written to
+// as a service account, so the day can be seen wherever that calendar is.
 type Calendar struct {
-	ICSURL string `toml:"ics_url"`
+	ICSURL         string `toml:"ics_url"`
+	PublishTo      string `toml:"publish_to"`
+	ServiceAccount string `toml:"service_account"`
+	PublishDays    int    `toml:"publish_days"`
 }
 
 func Default() Config {
@@ -48,6 +53,7 @@ func Default() Config {
 			URL:   "http://localhost:11434",
 			Model: "qwen3.6:35b",
 		},
+		Calendar: Calendar{PublishDays: 1},
 	}
 }
 

@@ -38,6 +38,11 @@ type Worker struct {
 	model Model
 	log   *slog.Logger
 	queue chan int64
+
+	// OnEnriched, when set, is told each time a task's fields change under
+	// it. The plan depends on those fields, so whatever shows the plan
+	// wants to know.
+	OnEnriched func(id int64)
 }
 
 func New(st *store.Store, model Model, log *slog.Logger) *Worker {
@@ -125,6 +130,9 @@ func (w *Worker) enrich(ctx context.Context, id int64) error {
 	}
 	w.log.Info("enriched", "id", id, "difficulty", after.Difficulty, "priority", after.Priority,
 		"due", after.Due, "recur", after.RecurRule)
+	if w.OnEnriched != nil {
+		w.OnEnriched(id)
+	}
 	return nil
 }
 

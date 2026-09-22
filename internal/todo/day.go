@@ -20,32 +20,48 @@ const calendarTimeout = 10 * time.Second
 // costs the plan some knowledge and is reported alongside it, rather than
 // failing the request. Working hours already describe most of a week.
 func (s *Service) Today(ctx context.Context, day string) (api.TodayResponse, error) {
+	plan, message, err := s.plan(ctx, day)
+	if err != nil {
+		return api.TodayResponse{}, err
+	}
+	return api.FromDay(plan, s.calendar.Configured(), message), nil
+}
+
+// Plan is Today before it is shaped for the wire, for the publisher, which
+// wants the times as times. A feed that could not be read has been logged
+// already; the plan is still the best answer there is.
+func (s *Service) Plan(ctx context.Context, day string) (schedule.Day, error) {
+	plan, _, err := s.plan(ctx, day)
+	return plan, err
+}
+
+func (s *Service) plan(ctx context.Context, day string) (schedule.Day, string, error) {
 	if day == "" {
 		day = store.Today()
 	}
 	if _, err := store.ParseDate(day); err != nil {
-		return api.TodayResponse{}, fmt.Errorf("today: day %q must be YYYY-MM-DD: %w", day, store.ErrInvalid)
+		return schedule.Day{}, "", fmt.Errorf("today: day %q must be YYYY-MM-DD: %w", day, store.ErrInvalid)
 	}
 	prefs, err := s.store.Preferences()
 	if err != nil {
-		return api.TodayResponse{}, err
+		return schedule.Day{}, "", err
 	}
 	tasks, err := s.store.List(store.Filter{Status: store.StatusOpen})
 	if err != nil {
-		return api.TodayResponse{}, err
+		return schedule.Day{}, "", err
 	}
 
 	busy, calErr := s.busy(ctx, day)
 	plan, err := schedule.Plan(schedule.Options{Day: day, Tasks: tasks, Busy: busy, Prefs: prefs})
 	if err != nil {
-		return api.TodayResponse{}, err
+		return schedule.Day{}, "", err
 	}
 	message := ""
 	if calErr != nil {
 		message = calErr.Error()
 		s.log.Warn("planning without the calendar", "day", day, "error", calErr)
 	}
-	return api.FromDay(plan, s.calendar.Configured(), message), nil
+	return plan, message, nil
 }
 
 func (s *Service) busy(ctx context.Context, day string) ([]calendar.Busy, error) {
@@ -69,6 +85,7 @@ func (s *Service) Pin(id int64, day string) (api.Task, error) {
 	if err != nil {
 		return api.Task{}, err
 	}
+	s.changed()
 	return api.FromTask(t), nil
 }
 
@@ -77,6 +94,7 @@ func (s *Service) Unpin(id int64) (api.Task, error) {
 	if err != nil {
 		return api.Task{}, err
 	}
+	s.changed()
 	return api.FromTask(t), nil
 }
 
@@ -106,5 +124,6 @@ func (s *Service) SetPreferences(req api.PreferencesRequest) (api.Preferences, e
 	if err != nil {
 		return api.Preferences{}, err
 	}
+	s.changed()
 	return api.FromPreferences(saved), nil
 }
