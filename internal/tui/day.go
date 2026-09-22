@@ -79,7 +79,7 @@ func (m Model) keyDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeList
 		return m, m.fetch()
 	case "?":
-		m.mode = modeHelp
+		m.mode, m.helpFrom = modeHelp, modeDay
 		return m, nil
 	case "j", "down":
 		m.dayCursor = stepDay(entries, m.dayCursor, 1)

@@ -39,6 +39,9 @@ func (m Model) View() string {
 	if m.mode == modeDay {
 		return m.dayView(width, height)
 	}
+	if m.mode == modeEdit || m.mode == modeField {
+		return m.editView(width, height)
+	}
 
 	header := m.header(width)
 	footer := m.footer(width)
@@ -253,7 +256,7 @@ func (m Model) footer(width int) string {
 		status = errorStyle.Render(m.failure)
 	}
 	return rule(width) + "\n" + truncate(strings.Join(keys, "  "), width) + "\n" +
-		pad(faintStyle.Render("a add · d done · u undo · e enrich · l note · p pin · t today · x delete · ? help · q quit"), status, width)
+		pad(faintStyle.Render("enter open · a add · d done · u undo · e enrich · l note · p pin · t today · x delete · q quit"), status, width)
 }
 
 func (m Model) help() string {
@@ -275,6 +278,12 @@ func (m Model) help() string {
 		"  u   undo the last completion",
 		"  e   read it with the model again; it only ever fills empty fields",
 		"  x   delete permanently, after a confirmation",
+		"",
+		headingStyle.Render("changing a task"),
+		"  enter opens the task. Inside it p and d cycle priority and difficulty,",
+		"  shift steps back, and u m r n t open a prefilled line for the due date,",
+		"  estimate, repeat rule, notes and title. Every press saves; an empty",
+		"  value clears the field. esc returns to the list.",
 		"",
 		headingStyle.Render("the day"),
 		"  t   the day view: what fits in today's free time, each block placed",

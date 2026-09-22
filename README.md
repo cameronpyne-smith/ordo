@@ -229,7 +229,7 @@ overdue by 2 days · high priority · low difficulty, so a quick win
 [[career-transition-quantitative-researcher]] The quant plan
 ────────────────────────────────────────────────────────────────────────────
 1 open  2 overdue  3 quick wins  4 high priority  5 linked  6 recurring  7 done
-a add · d done · u undo · e enrich · l note · x delete · r refresh · ? help · q quit
+enter open · a add · d done · u undo · e enrich · l note · p pin · t today · x delete · q quit
 ```
 
 The line under the list is the point of the thing: it names the fields that
@@ -244,8 +244,40 @@ watch. `l` opens what mnemo knows about the selected task — the note and its
 neighbourhood if it is linked, the notes it could point at if it is not, or
 the notes it might have become if its own has been renamed away.
 
+`enter` opens the selected task. Priority and difficulty are enums, so `p`
+and `d` cycle them and shift steps back; every other field opens a line
+prefilled with what is already there, because a due date is nearly always a
+correction rather than a retype. Each press saves, and the pane redraws from
+what the daemon stored rather than from what was typed.
+
+```
+ordo · #3
+────────────────────────────────────────────────────────────────────────────
+
+  Rewrite the latent pricing model
+
+  u  due         2026-10-01
+  p  priority    high
+  d  difficulty  high
+  m  estimate    90 min
+  r  repeats     3d after each completion
+  n  notes       the forward curve is the part that is wrong
+  t  title       Rewrite the latent pricing model
+
+  [[latent]] Full reference dump for the project
+────────────────────────────────────────────────────────────────────────────
+p d cycle · shift reverses · u m r n t edit · esc back · ? help · q quit
+```
+
+Cycling never lands on the unset value: clearing a field is deliberate
+enough to be worth typing, and one press too many should not throw away what
+the model worked out. An empty line is how a field is cleared. Whatever is
+set here is final, since enrichment only ever fills a field that is still
+empty.
+
 While anything on screen is still unread the list refreshes every 2 seconds;
-once everything has been read it drops to 30.
+once everything has been read it drops to 30. A task open in the pane keeps
+up with it, so a field the model fills in appears without reopening it.
 
 ## The day
 

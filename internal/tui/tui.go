@@ -32,6 +32,8 @@ const (
 	modeConfirm
 	modeHelp
 	modeDay
+	modeEdit
+	modeField
 )
 
 // The filters are the whole of the TUI's cleverness, deliberately: each one
@@ -76,6 +78,10 @@ type Model struct {
 
 	day       *api.TodayResponse
 	dayCursor int
+
+	edit     api.Task
+	field    string
+	helpFrom mode
 
 	message string
 	failure string
@@ -164,6 +170,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.message = msg.note
 		return m, nil
 
+	case editedMsg:
+		if msg.err != nil {
+			m.failure = msg.err.Error()
+			return m, nil
+		}
+		m.edit, m.message, m.failure = *msg.task, msg.note, ""
+		return m, m.fetch()
+
 	case relatedMsg:
 		if msg.err != nil {
 			m.mode, m.failure = modeList, msg.err.Error()
@@ -201,6 +215,16 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 		}
 	}
 	m.cursor = clampToTask(m.rows, m.cursor)
+	// An open task keeps up with the model: a field filled in behind the
+	// pane appears in it rather than waiting for it to be reopened.
+	if m.mode == modeEdit || m.mode == modeField {
+		for _, t := range msg.resp.Tasks {
+			if t.ID == m.edit.ID {
+				m.edit = t
+				break
+			}
+		}
+	}
 	return m
 }
 
@@ -245,8 +269,12 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyLink(msg)
 	case modeConfirm:
 		return m.keyConfirm(msg)
+	case modeEdit:
+		return m.keyEdit(msg)
+	case modeField:
+		return m.keyField(msg)
 	case modeHelp:
-		m.mode = modeList
+		m.mode, m.helpFrom = m.helpFrom, modeList
 		return m, nil
 	}
 
@@ -254,7 +282,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "?":
-		m.mode = modeHelp
+		m.mode, m.helpFrom = modeHelp, modeList
 	case "j", "down":
 		m.cursor = move(m.rows, m.cursor, 1)
 	case "k", "up":
@@ -303,6 +331,12 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			resp, err := c.Related(t.ID)
 			return relatedMsg{resp: resp, err: err}
 		}
+	case "enter":
+		t, ok := m.selected()
+		if !ok {
+			return m, nil
+		}
+		m.mode, m.edit, m.message = modeEdit, t, ""
 	case "t":
 		m.mode, m.message = modeDay, ""
 		return m, m.fetchDay()
