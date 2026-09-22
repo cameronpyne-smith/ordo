@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/mnemo"
@@ -24,15 +27,21 @@ type Options struct {
 	Todo  *todo.Service
 	Token string
 	MCP   http.Handler
+	Log   *slog.Logger
 }
 
 type Server struct {
 	todo  *todo.Service
 	token string
+	log   *slog.Logger
 }
 
 func New(opts Options) http.Handler {
-	s := &Server{todo: opts.Todo, token: opts.Token}
+	log := opts.Log
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	s := &Server{todo: opts.Todo, token: opts.Token, log: log}
 	mux := http.NewServeMux()
 	// The MCP mount sits behind the same bearer token as everything else,
 	// because it is the same daemon on the same tailnet port.
@@ -56,7 +65,55 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("GET /preferences", s.handlePreferences)
 	mux.HandleFunc("POST /preferences", s.handleSetPreferences)
 	mux.HandleFunc("GET /status", s.handleStatus)
-	return s.auth(mux)
+	// Logging wraps the token check rather than sitting inside it, because
+	// a request refused for a bad token is exactly the one you need to see:
+	// a client somewhere else is being turned away silently.
+	return s.logged(s.auth(mux))
+}
+
+// logged records every request the daemon answers. With a phone, a laptop
+// and a model all talking to it there is otherwise no way to ask whether a
+// request arrived at all, which is the first question when something sent
+// from elsewhere does not appear.
+func (s *Server) logged(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		rec := &recorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		s.log.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rec.status,
+			"ms", time.Since(started).Milliseconds(),
+			"from", clientHost(r.RemoteAddr))
+	})
+}
+
+// recorder remembers the status a handler wrote, which a ResponseWriter
+// does not otherwise expose. Flush is passed through so the MCP mount can
+// still stream.
+type recorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *recorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *recorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func clientHost(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
 }
 
 func (s *Server) auth(next http.Handler) http.Handler {

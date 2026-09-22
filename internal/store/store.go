@@ -15,7 +15,8 @@ import (
 )
 
 type Store struct {
-	db *sql.DB
+	db       *sql.DB
+	snapshot string
 }
 
 // Open prepares the database file, applying any outstanding migrations. The
@@ -39,7 +40,7 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
 	}
 	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	if err := s.migrate(path); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -47,6 +48,10 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// MigrationSnapshot is where the database was copied to before this open
+// migrated it, or empty when nothing needed migrating.
+func (s *Store) MigrationSnapshot() string { return s.snapshot }
 
 var migrations = []string{
 	`CREATE TABLE tasks (
@@ -101,7 +106,7 @@ var migrations = []string{
 	CREATE INDEX tasks_pinned ON tasks(pinned_on);`,
 }
 
-func (s *Store) migrate() error {
+func (s *Store) migrate(path string) error {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
 		return fmt.Errorf("migrating: %w", err)
 	}
@@ -113,6 +118,17 @@ func (s *Store) migrate() error {
 		}
 	} else if err != nil {
 		return fmt.Errorf("migrating: %w", err)
+	}
+	// A migration is the one moment code that has never run against this
+	// data rewrites it, and the nightly backup can be most of a day old by
+	// the time a new version is deployed. Version 0 is a database with
+	// nothing in it yet, which is the only case with nothing to lose.
+	if current > 0 && current < len(migrations) {
+		snapshot, err := s.snapshotBefore(path, len(migrations))
+		if err != nil {
+			return err
+		}
+		s.snapshot = snapshot
 	}
 	for v := current; v < len(migrations); v++ {
 		tx, err := s.db.Begin()
@@ -132,6 +148,18 @@ func (s *Store) migrate() error {
 		}
 	}
 	return nil
+}
+
+// snapshotBefore copies the database beside itself, named for the version
+// it is about to become, so the file you want is the one you can find.
+func (s *Store) snapshotBefore(path string, to int) (string, error) {
+	dir, name := filepath.Split(path)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	out := filepath.Join(dir, fmt.Sprintf("%s-pre-v%d-%s.db", name, to, Now().Format("20060102-150405")))
+	if _, err := s.db.Exec(`VACUUM INTO ?`, out); err != nil {
+		return "", fmt.Errorf("snapshotting before migrating to %d: %w", to, err)
+	}
+	return out, nil
 }
 
 const taskColumns = `id, title, notes, status, difficulty, priority, estimate_minutes, due,

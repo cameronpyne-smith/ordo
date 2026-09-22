@@ -44,6 +44,10 @@ func newServeCmd(configPath *string) *cobra.Command {
 			}
 			defer st.Close()
 
+			if snapshot := st.MigrationSnapshot(); snapshot != "" {
+				log.Info("snapshot taken before migrating", "path", snapshot)
+			}
+
 			sum, err := st.Summary()
 			if err != nil {
 				return err
@@ -81,6 +85,7 @@ func newServeCmd(configPath *string) *cobra.Command {
 				Todo:  svc,
 				Token: cfg.Token,
 				MCP:   mcp.Handler(svc, log),
+				Log:   log,
 			})}
 			errCh := make(chan error, 1)
 			go func() {

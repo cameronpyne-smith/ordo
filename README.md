@@ -435,6 +435,22 @@ journalctl -u ordo -f
 With the unit installed, an update is `git pull`, `go build`, then
 `sudo systemctl restart ordo`.
 
+Every request the daemon answers is logged with its method, path, status,
+duration and the address it came from, including the ones refused for a bad
+token — a client being turned away silently is the hardest thing to diagnose
+from the other end.
+
+```
+level=INFO msg=request method=POST path=/tasks status=201 ms=3 from=100.103.58.27
+level=INFO msg=request method=GET path=/today status=200 ms=11 from=100.64.0.4
+```
+
+An update that carries a migration copies the database beside itself first,
+as `ordo-pre-v4-20260922-140000.db`, and says where in the log. The nightly
+snapshot can be most of a day old by the time a new version is deployed, and
+a migration is the one moment code that has never run against this data
+rewrites it.
+
 ## Layout
 
 | Package | Holds |
