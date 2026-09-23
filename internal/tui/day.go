@@ -94,6 +94,12 @@ func (m Model) keyDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.askTook(t, modeDay)
+	case "enter":
+		t, ok := m.dayCursorTask()
+		if !ok {
+			return m, nil
+		}
+		return m.openTask(t, modeDay), nil
 	case "p":
 		return m.actOnDay(func(c *client.Client, id int64) (string, error) {
 			_, err := c.Unpin(id)
@@ -254,7 +260,7 @@ func (m Model) dayFooter(width int) string {
 	if status == "" && m.day != nil {
 		status = faintStyle.Render(dayNote(m.day))
 	}
-	keys := faintStyle.Render("j k move · d done · p unpin · r refresh · t list · ? help · q quit")
+	keys := faintStyle.Render("j k move · enter open · d done · p unpin · r refresh · t list · ? help · q quit")
 	return rule(width) + "\n" + pad(keys, status, width)
 }
 

@@ -84,7 +84,10 @@ func (m Model) keyEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "esc", "enter":
-		m.mode = modeList
+		m.mode = m.editFrom
+		if m.editFrom == modeDay {
+			return m, m.fetchDay()
+		}
 		return m, m.fetch()
 	case "?":
 		m.mode, m.helpFrom = modeHelp, modeEdit
@@ -110,6 +113,14 @@ func (m Model) keyEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// openTask shows one task's fields, from the list or the day. Back returns
+// to where it was opened, refetched, since an edit can move the task in
+// either.
+func (m Model) openTask(t api.Task, from mode) Model {
+	m.mode, m.edit, m.editFrom, m.message, m.noteScroll = modeEdit, t, from, "", 0
+	return m
 }
 
 // promptFor opens the one-line editor over the field, prefilled, because

@@ -182,3 +182,25 @@ func TestDayCursorSurvivesTheDayShrinking(t *testing.T) {
 		t.Fatalf("cursor = %d over %d entries, want a block", m.dayCursor, len(dayEntries(m.day)))
 	}
 }
+
+// A block is a task like any other, so enter opens it from the day the way
+// it does from the list, and esc comes back to the day, replanned.
+func TestEnterOpensABlocksTaskAndEscReturnsToTheDay(t *testing.T) {
+	m := New(nil)
+	m.mode = modeDay
+	m = m.applyDay(plan([]api.Block{
+		block("17:00", "17:20", "Green Book problems", func(b *api.Block) { b.Task.ID = 7 }),
+	}, nil), nil)
+
+	m, _ = press(t, m, "enter")
+	if m.mode != modeEdit || m.edit.ID != 7 {
+		t.Fatalf("mode = %v, opened #%d; want task 7 open", m.mode, m.edit.ID)
+	}
+	m, cmd := press(t, m, "esc")
+	if m.mode != modeDay {
+		t.Fatalf("esc went to mode %v, want the day", m.mode)
+	}
+	if cmd == nil {
+		t.Error("coming back did not replan the day")
+	}
+}

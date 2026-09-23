@@ -85,6 +85,7 @@ type Model struct {
 	dayCursor int
 
 	edit       api.Task
+	editFrom   mode
 	field      string
 	helpFrom   mode
 	notes      textarea.Model
@@ -349,7 +350,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		m.mode, m.edit, m.message, m.noteScroll = modeEdit, t, "", 0
+		return m.openTask(t, modeList), nil
 	case "t":
 		m.mode, m.message = modeDay, ""
 		return m, m.fetchDay()
