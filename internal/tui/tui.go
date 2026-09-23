@@ -25,6 +25,8 @@ const (
 
 type mode int
 
+const addPlaceholder = "put the bins out every tuesday"
+
 const (
 	modeList mode = iota
 	modeAdd
@@ -34,6 +36,7 @@ const (
 	modeDay
 	modeEdit
 	modeField
+	modeTook
 )
 
 // The filters are the whole of the TUI's cleverness, deliberately: each one
@@ -83,6 +86,9 @@ type Model struct {
 	field    string
 	helpFrom mode
 
+	took     api.Task
+	tookFrom mode
+
 	message string
 	failure string
 	pending bool
@@ -92,7 +98,7 @@ type Model struct {
 
 func New(c *client.Client) Model {
 	in := textinput.New()
-	in.Placeholder = "put the bins out every tuesday"
+	in.Placeholder = addPlaceholder
 	in.CharLimit = 500
 	return Model{client: c, input: in}
 }
@@ -273,6 +279,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyEdit(msg)
 	case modeField:
 		return m.keyField(msg)
+	case modeTook:
+		return m.keyTook(msg)
 	case modeHelp:
 		m.mode, m.helpFrom = m.helpFrom, modeList
 		return m, nil
@@ -296,20 +304,16 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.fetch()
 	case "a":
 		m.mode = modeAdd
+		m.input.Placeholder = addPlaceholder
 		m.input.SetValue("")
 		m.input.Focus()
 		return m, textinput.Blink
 	case "d":
-		return m.act(func(c *client.Client, id int64) (string, error) {
-			t, err := c.Done(id, 0)
-			if err != nil {
-				return "", err
-			}
-			if t.Status == "open" {
-				return "done — next one " + t.Due, nil
-			}
-			return "done", nil
-		})
+		t, ok := m.selected()
+		if !ok {
+			return m, nil
+		}
+		return m.askTook(t, modeList)
 	case "u":
 		return m.act(func(c *client.Client, id int64) (string, error) {
 			_, err := c.Undo(id)

@@ -111,6 +111,7 @@ func (m Model) keyEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // changing a due date is nearly always a correction rather than a retype.
 func (m Model) promptFor(f field) (tea.Model, tea.Cmd) {
 	m.mode, m.field, m.failure = modeField, f.name, ""
+	m.input.Placeholder = ""
 	m.input.SetValue(f.text(m.edit))
 	m.input.CursorEnd()
 	m.input.Focus()

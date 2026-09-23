@@ -36,7 +36,7 @@ func (m Model) View() string {
 	if height < 10 {
 		height = 24
 	}
-	if m.mode == modeDay {
+	if m.mode == modeDay || m.mode == modeTook && m.tookFrom == modeDay {
 		return m.dayView(width, height)
 	}
 	if m.mode == modeEdit || m.mode == modeField {
@@ -238,6 +238,8 @@ func (m Model) footer(width int) string {
 	switch m.mode {
 	case modeAdd:
 		return rule(width) + "\n" + "add: " + m.input.View()
+	case modeTook:
+		return m.tookFooter(width)
 	case modeConfirm:
 		return rule(width) + "\n" + errorStyle.Render(fmt.Sprintf("delete %d permanently? this cannot be undone  y/n", m.confirm))
 	}
@@ -274,7 +276,9 @@ func (m Model) help() string {
 		"",
 		headingStyle.Render("doing"),
 		"  a   add a task — type the sentence, the daemon reads the rest out of it",
-		"  d   done — a recurring task stays open and moves to its next date",
+		"  d   done — asks how long it took, filled in with the estimate: enter",
+		"      keeps it, or type the real minutes, or clear it if you do not know.",
+		"      esc backs out. A recurring task stays open and moves to its next date",
 		"  u   undo the last completion",
 		"  e   read it with the model again; it only ever fills empty fields",
 		"  x   delete permanently, after a confirmation",

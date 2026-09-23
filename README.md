@@ -242,7 +242,10 @@ The number keys are the filters, and they are filters rather than a
 conversation on purpose — "I have twenty minutes" is `3`, not a question.
 `a` adds a task: type the sentence and the daemon extracts the rest of it,
 so the new row appears bare and fills in a second or two later while you
-watch. `l` opens what mnemo knows about the selected task — the note and its
+watch. `d` asks how long the task took before completing it, with the
+estimate already filled in: enter keeps it, a number replaces it, an empty
+line records no time, and esc completes nothing. Those minutes are what the
+estimates will be calibrated against. `l` opens what mnemo knows about the selected task — the note and its
 neighbourhood if it is linked, the notes it could point at if it is not, or
 the notes it might have become if its own has been renamed away.
 

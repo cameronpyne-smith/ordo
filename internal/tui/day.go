@@ -89,16 +89,11 @@ func (m Model) keyDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.message = ""
 		return m, m.fetchDay()
 	case "d":
-		return m.actOnDay(func(c *client.Client, id int64) (string, error) {
-			t, err := c.Done(id, 0)
-			if err != nil {
-				return "", err
-			}
-			if t.Status == "open" {
-				return "done — next one " + t.Due, nil
-			}
-			return "done", nil
-		})
+		t, ok := m.dayCursorTask()
+		if !ok {
+			return m, nil
+		}
+		return m.askTook(t, modeDay)
 	case "p":
 		return m.actOnDay(func(c *client.Client, id int64) (string, error) {
 			_, err := c.Unpin(id)
@@ -249,6 +244,9 @@ func (m Model) dayDetail(width int) string {
 }
 
 func (m Model) dayFooter(width int) string {
+	if m.mode == modeTook {
+		return m.tookFooter(width)
+	}
 	status := m.message
 	if m.failure != "" {
 		status = errorStyle.Render(m.failure)
