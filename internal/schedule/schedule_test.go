@@ -199,14 +199,38 @@ func TestPlanTakesBackATaskWhosePinnedDayHasGone(t *testing.T) {
 	}
 }
 
-// A task dated in the future belongs on that day, not brought forward into
-// this one; an undated task may fill any space.
-func TestPlanHoldsFutureDatedTasksBack(t *testing.T) {
+// A due date is a deadline, not the day to start: a task due next week can
+// be done today, and comes before undated work when there is room for both.
+func TestPlanStartsDatedTasksBeforeTheirDeadline(t *testing.T) {
 	plan, err := Plan(Options{
 		Day:   monday,
 		Prefs: prefs(),
 		Tasks: []*store.Task{
 			task(1, "next week", due("2026-09-28"), est(30)),
+			task(2, "someday", est(30)),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Blocks) != 2 {
+		t.Fatalf("blocks = %+v, want both tasks", plan.Blocks)
+	}
+	if !strings.Contains(plan.Blocks[0].Reason, "due in 7 days") {
+		t.Errorf("reason = %q, want the deadline named", plan.Blocks[0].Reason)
+	}
+}
+
+// A recurring task's due date is its occurrence, so it waits for that day
+// rather than being done early because the day had room.
+func TestPlanHoldsARecurringTaskForItsDay(t *testing.T) {
+	plan, err := Plan(Options{
+		Day:   monday,
+		Prefs: prefs(),
+		Tasks: []*store.Task{
+			task(1, "bins", due("2026-09-22"), est(10), func(t *store.Task) {
+				t.RecurKind, t.RecurRule = store.RecurEvery, "weekly tue"
+			}),
 			task(2, "someday", est(30)),
 		},
 	})
