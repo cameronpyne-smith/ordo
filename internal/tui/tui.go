@@ -239,6 +239,7 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 		return m
 	}
 	m.failure = ""
+	selected, had := m.selected()
 	m.rows = layout(msg.resp.Tasks)
 	m.pending = false
 	for _, t := range msg.resp.Tasks {
@@ -247,7 +248,7 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 			break
 		}
 	}
-	m.cursor = clampToTask(m.rows, m.cursor)
+	m.cursor = follow(m.rows, m.cursor, selected.ID, had)
 	// An open task keeps up with the model: a field filled in behind the
 	// pane appears in it rather than waiting for it to be reopened.
 	if m.mode == modeEdit || m.mode == modeField || m.mode == modeNotes || m.mode == modePick {
@@ -511,6 +512,22 @@ func move(rows []row, from, step int) int {
 		}
 	}
 	return from
+}
+
+// follow keeps the cursor on the task it was on when the list is laid out
+// again, since a task that moves section, to waiting say, would otherwise
+// leave the cursor on whatever slid into its place, and the next key would
+// act on the wrong task. A task that has left the view gives way to the row
+// now where it was.
+func follow(rows []row, at int, id int64, had bool) int {
+	if had {
+		for i, r := range rows {
+			if r.isTask() && r.task.ID == id {
+				return i
+			}
+		}
+	}
+	return clampToTask(rows, at)
 }
 
 func clampToTask(rows []row, want int) int {

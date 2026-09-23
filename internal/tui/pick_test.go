@@ -217,3 +217,25 @@ func TestDoneOnAWaitingTaskSaysWhatItWaitedOn(t *testing.T) {
 		t.Fatalf("message = %q, want what it was waiting on", m.message)
 	}
 }
+
+// A task that moves section when the list comes back keeps the cursor, so
+// the next key acts on it and not on whatever slid into its old row.
+func TestTheCursorFollowsATaskThatMoves(t *testing.T) {
+	sofa := task(1, "Move sofa into office")
+	m := listOf(nil, sofa, task(2, "Move wardrobe into office"), task(6, "Make space in office"))
+	m.cursor = 1
+	if got, _ := m.selected(); got.ID != 1 {
+		t.Fatalf("selected %d, want the sofa to start from", got.ID)
+	}
+	moved := task(1, "Move sofa into office", blockedBy(api.Dep{ID: 6, Title: "Make space in office"}))
+	m = m.applyTasks(tasksMsg{resp: &api.ListResponse{Tasks: []api.Task{
+		task(2, "Move wardrobe into office"), task(6, "Make space in office"), moved,
+	}}})
+	if got, _ := m.selected(); got.ID != 1 || sectionOf(got) != sectionWaiting {
+		t.Fatalf("selected %d, want the cursor to have followed the sofa into waiting", got.ID)
+	}
+	m = m.applyTasks(tasksMsg{resp: &api.ListResponse{Tasks: []api.Task{task(2, "Move wardrobe into office")}}})
+	if got, ok := m.selected(); !ok || got.ID != 2 {
+		t.Fatalf("selected %d, want the row that is left once the task has gone", got.ID)
+	}
+}
