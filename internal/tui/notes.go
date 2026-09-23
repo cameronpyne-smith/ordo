@@ -122,7 +122,8 @@ func (m Model) openNotes() (tea.Model, tea.Cmd) {
 func (m Model) sizeNotes() Model {
 	width, height := m.size()
 	m.notes.SetWidth(width - 2)
-	m.notes.SetHeight(max(height-lipgloss.Height(m.editHeader(width))-lipgloss.Height(m.editFooter(width))-3, 3))
+	title := len(m.titleLines(width)) + 2
+	m.notes.SetHeight(max(height-lipgloss.Height(m.editHeader(width))-lipgloss.Height(m.editFooter(width))-title, 3))
 	return m
 }
 
@@ -157,7 +158,7 @@ func (m Model) keyNotes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) notesView(width, height int) string {
 	header := m.editHeader(width)
 	footer := m.editFooter(width)
-	body := strings.Join([]string{"", "  " + truncate(selectStyle.Render(m.edit.Title), width-2), "", m.notes.View()}, "\n")
+	body := strings.Join(append(append([]string{""}, m.titleLines(width)...), "", m.notes.View()), "\n")
 	gap := max(height-lipgloss.Height(header)-lipgloss.Height(body)-lipgloss.Height(footer), 0)
 	return strings.Join([]string{header, body + strings.Repeat("\n", gap), footer}, "\n")
 }

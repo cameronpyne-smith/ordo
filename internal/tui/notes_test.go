@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/cameronpyne-smith/ordo/internal/api"
 )
 
@@ -35,6 +37,45 @@ func TestALongNoteIsShownWhole(t *testing.T) {
 	}
 	if lines := strings.Count(frame, "\n") + 1; lines != 30 {
 		t.Errorf("rendered %d lines into a 30-line terminal", lines)
+	}
+}
+
+// A title too long for one line is wrapped in the open task rather than cut
+// off, here and in the notes editor, and the frame still fits the terminal.
+func TestALongTitleIsShownWhole(t *testing.T) {
+	title := "Read chapter 11 of Advances in Financial Machine Learning on backtest overfitting " +
+		"and write up the deflated Sharpe ratio for the latent notes"
+	m := opened("", 80, 30)
+	m.edit.Title = title
+	for _, mode := range []mode{modeEdit, modeNotes} {
+		m.mode = mode
+		if mode == modeNotes {
+			m = m.sizeNotes()
+		}
+		frame := m.View()
+		if !strings.Contains(frame, "latent notes") {
+			t.Fatalf("mode %v: the end of the title is not on screen:\n%s", mode, frame)
+		}
+		if lines := strings.Count(frame, "\n") + 1; lines != 30 {
+			t.Errorf("mode %v: rendered %d lines into a 30-line terminal", mode, lines)
+		}
+	}
+}
+
+// Editing a long title keeps the frame to the terminal: the line scrolls
+// rather than wrapping onto another.
+func TestEditingALongTitleStaysOnOneLine(t *testing.T) {
+	m := opened("", 80, 30)
+	m.edit.Title = strings.Repeat("a long title that goes on ", 8)
+	m, _ = press(t, m, "t")
+	frame := m.View()
+	if lines := strings.Count(frame, "\n") + 1; lines != 30 {
+		t.Fatalf("rendered %d lines into a 30-line terminal", lines)
+	}
+	for _, line := range strings.Split(frame, "\n") {
+		if w := lipgloss.Width(line); w > 80 {
+			t.Fatalf("a line is %d wide in an 80-column terminal: %q", w, line)
+		}
 	}
 }
 

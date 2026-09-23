@@ -158,8 +158,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		if m.mode == modeNotes {
+		switch m.mode {
+		case modeNotes:
 			m = m.sizeNotes()
+		case modeField:
+			m = m.sizeInput(m.field + ": ")
+		case modeAdd:
+			m = m.sizeInput("add: ")
 		}
 		return m, nil
 
@@ -320,6 +325,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.fetch()
 	case "a":
 		m.mode = modeAdd
+		m = m.sizeInput("add: ")
 		m.input.Placeholder = addPlaceholder
 		m.input.SetValue("")
 		m.input.Focus()

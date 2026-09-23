@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/store"
@@ -144,6 +145,7 @@ func (m Model) openTask(t api.Task, from mode) Model {
 // changing a due date is nearly always a correction rather than a retype.
 func (m Model) promptFor(f field) (tea.Model, tea.Cmd) {
 	m.mode, m.field, m.failure = modeField, f.name, ""
+	m = m.sizeInput(f.name + ": ")
 	m.input.Placeholder = ""
 	m.input.SetValue(f.text(m.edit))
 	m.input.CursorEnd()
@@ -291,7 +293,7 @@ func (m Model) editHeader(width int) string {
 }
 
 func (m Model) editBody(width int) string {
-	lines := []string{"", "  " + truncate(selectStyle.Render(m.edit.Title), width-2), ""}
+	lines := append(append([]string{""}, m.titleLines(width)...), "")
 	// The key sits in front of the field it changes, the way the footer
 	// reads everywhere else in ordo, rather than stranded at the far edge
 	// of a wide terminal.
@@ -314,6 +316,25 @@ func (m Model) editBody(width int) string {
 		lines = append(lines, "", faintStyle.Render("  pinned to "+m.edit.PinnedOn))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// sizeInput fits the one-line editor between its prompt and the edge, so a
+// long title scrolls sideways under the cursor instead of running off the
+// screen and pushing the pane up.
+func (m Model) sizeInput(prompt string) Model {
+	width, _ := m.size()
+	m.input.Width = max(width-lipgloss.Width(prompt)-lipgloss.Width(m.input.Prompt)-2, 10)
+	return m
+}
+
+// titleLines is the whole title, wrapped. The rows of the list and the day
+// have one line for it; the open task is where the rest can be read.
+func (m Model) titleLines(width int) []string {
+	lines := wrapNotes(m.edit.Title, width-4)
+	for i, l := range lines {
+		lines[i] = "  " + selectStyle.Render(l)
+	}
+	return lines
 }
 
 func (m Model) editFooter(width int) string {
