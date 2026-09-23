@@ -42,6 +42,7 @@ const (
 	modeLeft
 	modeNotes
 	modePick
+	modeSearch
 )
 
 // The filters are the whole of the TUI's cleverness, deliberately: each one
@@ -74,9 +75,11 @@ func (r row) isTask() bool { return r.heading == "" }
 type Model struct {
 	client *client.Client
 
+	tasks  []api.Task
 	rows   []row
 	cursor int
 	filter int
+	query  string
 
 	mode      mode
 	input     textinput.Model
@@ -172,6 +175,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.sizeInput("add: ")
 		case modePick:
 			m = m.sizeInput(pickPrompt)
+		case modeSearch:
+			m = m.sizeInput(searchPrompt)
 		}
 		return m, nil
 
@@ -239,8 +244,8 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 		return m
 	}
 	m.failure = ""
-	selected, had := m.selected()
-	m.rows = layout(msg.resp.Tasks)
+	m.tasks = msg.resp.Tasks
+	m = m.relayout()
 	m.pending = false
 	for _, t := range msg.resp.Tasks {
 		if !t.Enriched {
@@ -248,7 +253,6 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 			break
 		}
 	}
-	m.cursor = follow(m.rows, m.cursor, selected.ID, had)
 	// An open task keeps up with the model: a field filled in behind the
 	// pane appears in it rather than waiting for it to be reopened.
 	if m.mode == modeEdit || m.mode == modeField || m.mode == modeNotes || m.mode == modePick {
@@ -315,6 +319,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyNotes(msg)
 	case modePick:
 		return m.keyPick(msg)
+	case modeSearch:
+		return m.keySearch(msg)
 	case modeHelp:
 		m.mode, m.helpFrom = m.helpFrom, modeList
 		return m, nil
@@ -325,6 +331,13 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.mode, m.helpFrom = modeHelp, modeList
+	case "/":
+		return m.openSearch()
+	case "esc":
+		if m.query != "" {
+			m.query = ""
+			m = m.relayout()
+		}
 	case "j", "down":
 		m.cursor = move(m.rows, m.cursor, 1)
 	case "k", "up":

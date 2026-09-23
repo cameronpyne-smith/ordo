@@ -67,6 +67,9 @@ func (m Model) size() (int, int) {
 
 func (m Model) header(width int) string {
 	left := "ordo · " + filters[m.filter].name
+	if m.query != "" && m.mode != modeSearch {
+		left += " · " + searchPrompt + m.query + faintStyle.Render("  esc clears")
+	}
 	right := fmt.Sprintf("%d shown", m.countTasks())
 	return pad(left, right, width) + "\n" + rule(width)
 }
@@ -83,7 +86,11 @@ func (m Model) countTasks() int {
 
 func (m Model) list(width, height int) string {
 	if len(m.rows) == 0 {
-		return "\n" + faintStyle.Render("  nothing here") + strings.Repeat("\n", max(height-2, 0))
+		empty := "  nothing here"
+		if m.query != "" {
+			empty = "  nothing matches"
+		}
+		return "\n" + faintStyle.Render(empty) + strings.Repeat("\n", max(height-2, 0))
 	}
 	start := 0
 	if m.cursor >= height {
@@ -256,6 +263,9 @@ func (m Model) footer(width int) string {
 	switch m.mode {
 	case modeAdd:
 		return rule(width) + "\n" + "add: " + m.input.View()
+	case modeSearch:
+		return rule(width) + "\n" + searchPrompt + m.input.View() + "\n" +
+			faintStyle.Render("↑ ↓ move · enter keep the search · esc clear it")
 	case modeTook, modeLeft:
 		return m.tookFooter(width)
 	case modeConfirm:
@@ -276,7 +286,7 @@ func (m Model) footer(width int) string {
 		status = errorStyle.Render(m.failure)
 	}
 	return rule(width) + "\n" + truncate(strings.Join(keys, "  "), width) + "\n" +
-		pad(faintStyle.Render("enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit"), status, width)
+		pad(faintStyle.Render("/ search · enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit"), status, width)
 }
 
 func (m Model) help() string {
@@ -292,6 +302,8 @@ func (m Model) help() string {
 		headingStyle.Render("moving"),
 		"  j k ↑ ↓   move          g G   first, last",
 		"  1 – 7     filter        r     refresh now",
+		"  /         search the title, notes, note slug and id as you type;",
+		"            enter keeps it to act on a match, esc clears it",
 		"",
 		headingStyle.Render("doing"),
 		"  a   add a task — type the sentence, the daemon reads the rest out of it",

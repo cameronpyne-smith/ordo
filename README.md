@@ -270,7 +270,7 @@ overdue by 2 days · high priority · low difficulty · a quick win
 [[career-transition-quantitative-researcher]] The quant plan
 ────────────────────────────────────────────────────────────────────────────
 1 open  2 overdue  3 quick wins  4 high priority  5 linked  6 recurring  7 done
-enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit
+/ search · enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit
 ```
 
 The line under the list is the point of the thing: it names the fields that
@@ -279,6 +279,10 @@ trust. `~` means the model has not read the task yet.
 
 The number keys are the filters, and they are filters rather than a
 conversation on purpose — "I have twenty minutes" is `3`, not a question.
+`/` searches within whichever filter is on, narrowing the list as you type:
+every word has to appear somewhere in the title, the notes or the slug of
+the linked note, and a number also finds the ids that start with it. Enter
+keeps the search so the match can be opened or done, and esc clears it.
 `a` adds a task: type the sentence and the daemon extracts the rest of it,
 so the new row appears bare and fills in a second or two later while you
 watch. `d` asks how long the task took before completing it, with the
@@ -333,8 +337,7 @@ ordo · #3
 p d cycle · shift reverses · u s m l r n t w edit · esc back · ? help · q quit
 ```
 
-`w` opens a picker over the open tasks: type to filter by title, or a number
-for an id, space ticks, enter saves the whole list and esc changes nothing.
+`w` opens a picker over the open tasks: type to filter the way `/` searches, space ticks, enter saves the whole list and esc changes nothing.
 It only offers what the task could wait on, so nothing repeating and nothing
 that already waits on this one. A blocker already done is ticked with ✓ and
 can be kept or dropped. `blocks` is what waits on this task.

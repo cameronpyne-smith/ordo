@@ -94,32 +94,10 @@ func waitingOnTransitively(id int64, tasks []api.Task) map[int64]bool {
 	return out
 }
 
-// pickShown is the offer narrowed by what has been typed: a number matches
-// the start of an id, and words match anywhere in the title.
+// pickShown is the offer narrowed by what has been typed, the same way the
+// list is searched.
 func (m Model) pickShown() []api.Task {
-	query := strings.ToLower(strings.TrimSpace(m.input.Value()))
-	if query == "" {
-		return m.pickFrom
-	}
-	_, numeric := strconv.Atoi(query)
-	var out []api.Task
-	for _, t := range m.pickFrom {
-		if numeric == nil && strings.HasPrefix(strconv.FormatInt(t.ID, 10), query) {
-			out = append(out, t)
-			continue
-		}
-		title, all := strings.ToLower(t.Title), true
-		for _, word := range strings.Fields(query) {
-			if !strings.Contains(title, word) {
-				all = false
-				break
-			}
-		}
-		if all {
-			out = append(out, t)
-		}
-	}
-	return out
+	return searched(m.pickFrom, m.input.Value())
 }
 
 func (m Model) keyPick(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

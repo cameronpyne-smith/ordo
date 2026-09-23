@@ -51,6 +51,7 @@ func completing(t *testing.T, stored api.Task) (*client.Client, *completions) {
 
 func listOf(c *client.Client, tasks ...api.Task) Model {
 	m := New(c)
+	m.tasks = tasks
 	m.rows = layout(tasks)
 	m.cursor = clampToTask(m.rows, 0)
 	return m
