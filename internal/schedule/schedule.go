@@ -266,13 +266,10 @@ func skipReason(budget, want int, p store.Preferences) string {
 	return fmt.Sprintf("needs %d minutes and only %d of the day's %d are left", want, budget, p.MaxMinutesDay)
 }
 
-// Windows is the day's free time: the hours the day is available, less work,
-// less whatever the calendar says is taken.
+// Windows is the day's free time: the hours the day is available, less
+// whatever the calendar says is taken, work included.
 func Windows(date time.Time, p store.Preferences, busy []calendar.Busy) []Window {
 	free := []Window{{Start: p.DayStart.On(date), End: p.DayEnd.On(date)}}
-	if p.WorkDays.Contains(date.Weekday()) {
-		free = subtract(free, p.WorkStart.On(date), p.WorkEnd.On(date))
-	}
 	for _, b := range busy {
 		free = subtract(free, b.Start, b.End)
 	}

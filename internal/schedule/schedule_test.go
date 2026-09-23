@@ -18,6 +18,12 @@ const (
 
 func prefs() store.Preferences { return store.DefaultPreferences() }
 
+// work is the job as the calendar has it, which is the only way the
+// scheduler hears about it.
+func work(day string) []calendar.Busy {
+	return []calendar.Busy{{Start: at(day, "09:00"), End: at(day, "17:30"), Summary: "Work"}}
+}
+
 func at(day, clock string) time.Time {
 	t, err := time.ParseInLocation("2006-01-02 15:04", day+" "+clock, store.Location)
 	if err != nil {
@@ -57,22 +63,24 @@ func spans(windows []Window) []string {
 	return out
 }
 
-func TestWindowsCutTheWorkingDayOut(t *testing.T) {
+func TestWindowsCutWorkOutWhereTheCalendarPutsIt(t *testing.T) {
 	day, _ := store.ParseDate(monday)
-	got := spans(Windows(day, prefs(), nil))
+	got := spans(Windows(day, prefs(), work(monday)))
 	want := []string{"07:00-09:00", "17:30-22:00"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("windows = %v, want %v", got, want)
 	}
 }
 
-// A day the job does not take is one window, which is the point of work_days
-// being a set rather than a flag.
-func TestWindowsLeaveTheWeekendWhole(t *testing.T) {
-	day, _ := store.ParseDate(saturday)
-	got := spans(Windows(day, prefs(), nil))
-	if len(got) != 1 || got[0] != "07:00-22:00" {
-		t.Fatalf("windows = %v, want one all-day window", got)
+// Work is not a preference, so a weekday with nothing on the calendar is as
+// free as a Saturday: a day's leave is a deleted event, not a setting.
+func TestWindowsLeaveAnEmptyDayWhole(t *testing.T) {
+	for _, d := range []string{monday, saturday} {
+		day, _ := store.ParseDate(d)
+		got := spans(Windows(day, prefs(), nil))
+		if len(got) != 1 || got[0] != "07:00-22:00" {
+			t.Fatalf("%s windows = %v, want one all-day window", d, got)
+		}
 	}
 }
 
@@ -221,6 +229,7 @@ func TestPlanStillPlacesDemandingWorkTooLongForTheDeepWindow(t *testing.T) {
 		Day:   monday,
 		Prefs: prefs(),
 		Tasks: []*store.Task{task(1, "a long haul", due(monday), hard, est(180))},
+		Busy:  work(monday),
 	})
 	if err != nil {
 		t.Fatal(err)

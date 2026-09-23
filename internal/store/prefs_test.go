@@ -3,7 +3,6 @@ package store
 import (
 	"errors"
 	"testing"
-	"time"
 )
 
 // A database nobody has configured still has to schedule sensibly, so the
@@ -14,22 +13,16 @@ func TestPreferencesDefaultBeforeAnythingIsWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := DefaultPreferences()
-	if got.WorkStart != want.WorkStart || got.MaxMinutesDay != want.MaxMinutesDay {
+	if got != DefaultPreferences() {
 		t.Fatalf("preferences = %+v, want the defaults", got)
-	}
-	if !got.WorkDays.Contains(time.Monday) || got.WorkDays.Contains(time.Sunday) {
-		t.Errorf("work days = %s, want a UK working week", got.WorkDays)
 	}
 }
 
 func TestPreferencesRoundTrip(t *testing.T) {
 	st := open(t)
 	p := DefaultPreferences()
-	p.DayStart = Clock{6, 30}
-	p.WorkEnd = Clock{16, 0}
-	p.WorkDays = Weekdays{time.Tuesday, time.Thursday}
-	p.DeepStart, p.DeepEnd = Clock{20, 0}, Clock{22, 0}
+	p.DayStart, p.DayEnd = Clock{6, 30}, Clock{23, 59}
+	p.DeepStart, p.DeepEnd = Clock{22, 0}, Clock{23, 59}
 	p.BufferMinutes = 5
 	p.MaxMinutesDay = 300
 
@@ -40,14 +33,8 @@ func TestPreferencesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DayStart != p.DayStart || got.WorkEnd != p.WorkEnd || got.DeepStart != p.DeepStart {
-		t.Fatalf("clocks did not survive: %+v", got)
-	}
-	if got.WorkDays.String() != "tue,thu" {
-		t.Errorf("work days = %q, want tue,thu", got.WorkDays)
-	}
-	if got.BufferMinutes != 5 || got.MaxMinutesDay != 300 {
-		t.Errorf("numbers did not survive: %+v", got)
+	if got != p {
+		t.Fatalf("preferences = %+v, want %+v", got, p)
 	}
 }
 
@@ -76,7 +63,6 @@ func TestPreferencesRejectAnIncoherentDay(t *testing.T) {
 		bad  func(*Preferences)
 	}{
 		{"day ends before it starts", func(p *Preferences) { p.DayEnd = Clock{6, 0} }},
-		{"work ends before it starts", func(p *Preferences) { p.WorkEnd = Clock{8, 0} }},
 		{"deep work ends before it starts", func(p *Preferences) { p.DeepEnd = Clock{6, 0} }},
 		{"deep work outside the day", func(p *Preferences) { p.DeepStart, p.DeepEnd = Clock{5, 0}, Clock{6, 0} }},
 		{"negative buffer", func(p *Preferences) { p.BufferMinutes = -1 }},
@@ -114,22 +100,6 @@ func TestParseClock(t *testing.T) {
 		if _, err := ParseClock(bad); !errors.Is(err, ErrInvalid) {
 			t.Errorf("ParseClock(%q) accepted it", bad)
 		}
-	}
-}
-
-func TestParseWeekdays(t *testing.T) {
-	got, err := ParseWeekdays("THU, mon,mon")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.String() != "mon,thu" {
-		t.Fatalf("days = %q, want them deduplicated and Monday first", got)
-	}
-	if empty, err := ParseWeekdays(""); err != nil || len(empty) != 0 {
-		t.Errorf("empty = %v, %v; want no days and no error", empty, err)
-	}
-	if _, err := ParseWeekdays("mon,funday"); !errors.Is(err, ErrInvalid) {
-		t.Errorf("err = %v, want ErrInvalid", err)
 	}
 }
 

@@ -104,6 +104,14 @@ var migrations = []string{
 		max_minutes_day   INTEGER NOT NULL
 	);
 	CREATE INDEX tasks_pinned ON tasks(pinned_on);`,
+
+	// Working hours were a preference until the day they could not say "except
+	// lunch". The calendar already says when anything takes the day, so it
+	// says it for work too, and one source of busy time cannot disagree with
+	// another.
+	`ALTER TABLE preferences DROP COLUMN work_start;
+	ALTER TABLE preferences DROP COLUMN work_end;
+	ALTER TABLE preferences DROP COLUMN work_days;`,
 }
 
 func (s *Store) migrate(path string) error {

@@ -17,7 +17,7 @@ func TestPreferencesReadsWhenGivenNothing(t *testing.T) {
 
 	got := call[api.Preferences](t, sess, "todo_preferences", PrefsArgs{})
 	want := store.DefaultPreferences()
-	if got.WorkStart != want.WorkStart.String() || got.MaxMinutesDay != want.MaxMinutesDay {
+	if got.DayStart != want.DayStart.String() || got.MaxMinutesDay != want.MaxMinutesDay {
 		t.Fatalf("preferences = %+v, want the defaults", got)
 	}
 }
@@ -32,8 +32,8 @@ func TestPreferencesChangesOnlyWhatItIsGiven(t *testing.T) {
 		t.Fatalf("deep window = %s-%s, want it moved", got.DeepStart, got.DeepEnd)
 	}
 	// Everything not mentioned has to survive, or "move deep work to
-	// mornings" would quietly reset the working week.
-	if got.WorkStart != "09:00" || got.WorkDays != "mon,tue,wed,thu,fri" {
+	// mornings" would quietly reset the rest of the day.
+	if got.DayStart != "07:00" || got.DayEnd != "22:00" || got.MaxMinutesDay != 240 {
 		t.Errorf("preferences = %+v, want the rest untouched", got)
 	}
 }

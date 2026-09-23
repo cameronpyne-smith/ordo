@@ -44,7 +44,7 @@ func newTodayCmd(configPath *string) *cobra.Command {
 func printDay(w io.Writer, plan *api.TodayResponse, why bool) {
 	fmt.Fprintf(w, "%s  %d of %d minutes planned\n", plan.Date, plan.PlannedMinutes, plan.BudgetMinutes)
 	if plan.CalendarError != "" {
-		fmt.Fprintf(w, "the calendar could not be read, so this is working hours only: %s\n", plan.CalendarError)
+		fmt.Fprintf(w, "the calendar could not be read: %s\n", plan.CalendarError)
 	}
 	fmt.Fprintln(w)
 
@@ -217,9 +217,6 @@ func prefsRequest(args []string) (api.PreferencesRequest, error) {
 	texts := map[string]**string{
 		"day_start":  &req.DayStart,
 		"day_end":    &req.DayEnd,
-		"work_start": &req.WorkStart,
-		"work_end":   &req.WorkEnd,
-		"work_days":  &req.WorkDays,
 		"deep_start": &req.DeepStart,
 		"deep_end":   &req.DeepEnd,
 	}
@@ -272,9 +269,6 @@ func printPrefs(w io.Writer, p *api.Preferences) {
 	for _, row := range [][2]string{
 		{"day_start", p.DayStart},
 		{"day_end", p.DayEnd},
-		{"work_start", p.WorkStart},
-		{"work_end", p.WorkEnd},
-		{"work_days", p.WorkDays},
 		{"deep_start", p.DeepStart},
 		{"deep_end", p.DeepEnd},
 		{"buffer_minutes", fmt.Sprint(p.BufferMinutes)},

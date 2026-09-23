@@ -73,9 +73,6 @@ func FromPreferences(p store.Preferences) Preferences {
 	return Preferences{
 		DayStart:        p.DayStart.String(),
 		DayEnd:          p.DayEnd.String(),
-		WorkStart:       p.WorkStart.String(),
-		WorkEnd:         p.WorkEnd.String(),
-		WorkDays:        p.WorkDays.String(),
 		DeepStart:       p.DeepStart.String(),
 		DeepEnd:         p.DeepEnd.String(),
 		BufferMinutes:   p.BufferMinutes,
@@ -92,7 +89,6 @@ func (r PreferencesRequest) Apply(p store.Preferences) (store.Preferences, error
 		into  *store.Clock
 	}{
 		{r.DayStart, &p.DayStart}, {r.DayEnd, &p.DayEnd},
-		{r.WorkStart, &p.WorkStart}, {r.WorkEnd, &p.WorkEnd},
 		{r.DeepStart, &p.DeepStart}, {r.DeepEnd, &p.DeepEnd},
 	} {
 		if f.value == nil {
@@ -103,13 +99,6 @@ func (r PreferencesRequest) Apply(p store.Preferences) (store.Preferences, error
 			return p, err
 		}
 		*f.into = c
-	}
-	if r.WorkDays != nil {
-		days, err := store.ParseWeekdays(*r.WorkDays)
-		if err != nil {
-			return p, err
-		}
-		p.WorkDays = days
 	}
 	for _, f := range []struct {
 		value *int
@@ -128,8 +117,7 @@ func (r PreferencesRequest) Apply(p store.Preferences) (store.Preferences, error
 
 // Empty reports whether the request would change nothing.
 func (r PreferencesRequest) Empty() bool {
-	return r.DayStart == nil && r.DayEnd == nil && r.WorkStart == nil && r.WorkEnd == nil &&
-		r.WorkDays == nil && r.DeepStart == nil && r.DeepEnd == nil && r.BufferMinutes == nil &&
+	return r.DayStart == nil && r.DayEnd == nil && r.DeepStart == nil && r.DeepEnd == nil && r.BufferMinutes == nil &&
 		r.MinBlockMinutes == nil && r.MaxMinutesDay == nil
 }
 

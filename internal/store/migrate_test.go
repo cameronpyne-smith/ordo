@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,7 +54,8 @@ func TestMigratingSnapshotsWhatItIsAboutToRewrite(t *testing.T) {
 	if dir := filepath.Dir(snapshot); dir != filepath.Dir(path) {
 		t.Errorf("snapshot went to %s, want it beside the database", dir)
 	}
-	if name := filepath.Base(snapshot); !strings.HasPrefix(name, "ordo-pre-v3-") || !strings.HasSuffix(name, ".db") {
+	prefix := fmt.Sprintf("ordo-pre-v%d-", len(migrations))
+	if name := filepath.Base(snapshot); !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".db") {
 		t.Errorf("snapshot is called %q", name)
 	}
 
@@ -121,5 +123,44 @@ func TestReopeningACurrentDatabaseIsNotSnapshotted(t *testing.T) {
 	defer second.Close()
 	if got := second.MigrationSnapshot(); got != "" {
 		t.Fatalf("nothing needed migrating, yet %s was written", got)
+	}
+}
+
+// Dropping the working hours must keep the rest of the day as it was set:
+// the migration removes three columns, not the row they were in.
+func TestDroppingWorkKeepsTheRestOfTheDay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ordo.db")
+	atVersion(t, path, 3)
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = raw.Exec(`INSERT INTO preferences (id, day_start, day_end, work_start, work_end, work_days,
+		deep_start, deep_end, buffer_minutes, min_block_minutes, max_minutes_day)
+		VALUES (1, '08:30', '23:59', '09:00', '17:00', 'mon,tue,wed,thu,fri', '22:00', '23:59', 5, 20, 300)`)
+	raw.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	got, err := st.Preferences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Preferences{
+		DayStart: Clock{8, 30}, DayEnd: Clock{23, 59},
+		DeepStart: Clock{22, 0}, DeepEnd: Clock{23, 59},
+		BufferMinutes: 5, MinBlockMinutes: 20, MaxMinutesDay: 300,
+	}
+	if got != want {
+		t.Fatalf("preferences = %+v, want %+v", got, want)
+	}
+	if _, err := st.SetPreferences(got); err != nil {
+		t.Fatalf("writing after the migration: %v", err)
 	}
 }

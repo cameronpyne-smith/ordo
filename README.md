@@ -81,7 +81,7 @@ ordo today --why                 # and why each block is where it is
 ordo pin 4                       # claim a task for today
 ordo unpin 4
 ordo prefs                       # the shape of the day
-ordo prefs work_end=16:00 deep_start=06:00 day_start=06:00
+ordo prefs deep_start=06:00 day_start=06:00
 ordo status
 ordo backup                      # on the box; serve also snapshots nightly
 ```
@@ -328,9 +328,6 @@ requiring one.
 ordo prefs
 day_start            07:00     # the earliest anything is scheduled
 day_end              22:00
-work_start           09:00     # never scheduled on a work day
-work_end             17:30
-work_days            mon,tue,wed,thu,fri
 deep_start           07:00     # demanding tasks prefer this window
 deep_end             09:00
 buffer_minutes       10        # left between consecutive blocks
@@ -342,18 +339,26 @@ Changing one leaves the rest alone, and a day that could not exist is refused
 whole rather than half-written: deep work outside the usable day is a clash,
 not a silent no-op.
 
+Working hours are not a preference. Work goes on the calendar as events like
+anything else that takes the day, because a job has lunch breaks, leave, half
+days and late meetings that two clock times cannot say.
+
 ## The calendar
 
 The calendar has two directions, and they are two different calendars.
 
 **Reading.** `[calendar] ics_url` is a published ICS feed of your own
-calendar, the one with your commitments in it. The scheduler reads it for
-what is already taken and never writes to it.
+calendar, the one with your commitments in it: work, meals, the school run,
+anything ordo should plan around. The scheduler reads it for what is already
+taken and never writes to it. Only events marked busy count.
 
-A feed is optional and its absence is normal, not a degraded state. Working
-hours alone already describe most of a week, and the packer answers the same
-way with or without one. A feed that is configured and unreadable costs the
-plan some knowledge and says so, rather than failing the request.
+A feed is optional; without one, every hour between `day_start` and
+`day_end` is free. Once one is configured it is what keeps tasks out of the
+working day, so an unreadable feed is answered from the last copy that could
+be read, and the plan says how old that copy is. A daemon that has never
+read the feed since it started does not publish until it has: leaving the
+last published plan in place is better than filling the working day with
+tasks on every phone the calendar reaches.
 
 Recurring events, exclusions, all-day events, durations instead of end times,
 and events marked free or cancelled are all handled: most of what fills a
@@ -361,9 +366,9 @@ calendar repeats, so a reader that ignored `RRULE` would miss the majority of
 a real week. One unparseable event is skipped rather than losing the rest.
 
 Any provider with a private ICS address works. Point it at a personal
-calendar rather than a work one: a corporate tenant usually blocks publishing
-anyway, and ordo only needs to know when you are busy, which `work_start` and
-`work_end` already say for the job itself.
+calendar rather than a work one, and put work on it as a recurring busy
+event: a corporate tenant usually blocks publishing anyway, and ordo only
+needs to know when you are busy, not what the meetings are.
 
 **Publishing.** `publish_to` is a Google calendar that exists for ordo alone.
 The daemon keeps it equal to the plan: one event per block, the task as the

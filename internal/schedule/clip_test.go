@@ -20,7 +20,7 @@ func nowIs(t *testing.T, day, clock string) {
 // anything at seven in the morning.
 func TestPlanForTodayStartsNow(t *testing.T) {
 	nowIs(t, monday, "15:00")
-	day, err := Plan(Options{Day: monday, Tasks: []*store.Task{task(1, "later", est(30))}, Prefs: prefs()})
+	day, err := Plan(Options{Day: monday, Tasks: []*store.Task{task(1, "later", est(30))}, Busy: work(monday), Prefs: prefs()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -264,7 +264,7 @@ func (m Model) dayFooter(width int) string {
 // left out, and whether the calendar was actually consulted.
 func dayNote(plan *api.TodayResponse) string {
 	if plan.CalendarError != "" {
-		return "calendar unreadable, working hours only"
+		return "calendar unreadable: " + plan.CalendarError
 	}
 	if n := len(plan.Skipped); n > 0 {
 		if n == 1 {
@@ -273,7 +273,7 @@ func dayNote(plan *api.TodayResponse) string {
 		return fmt.Sprintf("%d tasks did not fit", n)
 	}
 	if !plan.Calendar {
-		return "no calendar feed, working hours only"
+		return "no calendar feed, so nothing is busy"
 	}
 	return ""
 }

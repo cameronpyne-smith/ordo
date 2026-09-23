@@ -18,23 +18,21 @@ func TestPreferencesRoundTripOverHTTP(t *testing.T) {
 	}
 	var got api.Preferences
 	decodeInto(t, rec, &got)
-	if got.WorkStart != "09:00" {
-		t.Fatalf("work_start = %q, want the default", got.WorkStart)
+	if got.DayStart != "07:00" {
+		t.Fatalf("day_start = %q, want the default", got.DayStart)
 	}
 
-	end := "16:00"
-	days := "mon,tue,wed,thu"
-	rec = request(t, h, http.MethodPost, "/preferences",
-		api.PreferencesRequest{WorkEnd: &end, WorkDays: &days})
+	end := "23:59"
+	rec = request(t, h, http.MethodPost, "/preferences", api.PreferencesRequest{DayEnd: &end})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	decodeInto(t, rec, &got)
-	if got.WorkEnd != "16:00" || got.WorkDays != "mon,tue,wed,thu" {
+	if got.DayEnd != "23:59" {
 		t.Fatalf("preferences = %+v", got)
 	}
-	if got.DayEnd != "22:00" {
-		t.Errorf("day_end = %q, want the untouched default", got.DayEnd)
+	if got.DayStart != "07:00" {
+		t.Errorf("day_start = %q, want the untouched default", got.DayStart)
 	}
 }
 
@@ -42,7 +40,7 @@ func TestPreferencesRejectTheIncoherent(t *testing.T) {
 	h, _, _ := newTestServer(t)
 
 	bad := "not a time"
-	rec := request(t, h, http.MethodPost, "/preferences", api.PreferencesRequest{WorkStart: &bad})
+	rec := request(t, h, http.MethodPost, "/preferences", api.PreferencesRequest{DayStart: &bad})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}

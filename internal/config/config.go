@@ -35,8 +35,8 @@ type Ollama struct {
 }
 
 // Calendar has two directions. ICSURL is a published feed the scheduler
-// reads for what is already taken; leaving it empty is a normal
-// configuration, since working hours alone describe most of a week.
+// reads for what is already taken, work included; without one, every hour
+// of the day is free.
 // PublishTo is a Google calendar of ordo's own that the plan is written to
 // as a service account, so the day can be seen wherever that calendar is.
 type Calendar struct {

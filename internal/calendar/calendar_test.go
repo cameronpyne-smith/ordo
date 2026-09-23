@@ -2,10 +2,12 @@ package calendar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -54,8 +56,8 @@ func show(busy []Busy) []string {
 	return out
 }
 
-// No feed configured is a normal state, not an error: working hours alone
-// already describe most of a week.
+// No feed configured is a normal state, not an error: the day is then only
+// its preferences.
 func TestNoFeedIsNotAnError(t *testing.T) {
 	var c *Client
 	if New("", nil) != nil {
@@ -256,5 +258,45 @@ func TestParseDuration(t *testing.T) {
 		if _, err := parseDuration(bad); err == nil {
 			t.Errorf("%q parsed, want an error", bad)
 		}
+	}
+}
+
+// A feed read once and then lost is answered from the copy, with a *Stale
+// error that says so; the next good read replaces the copy.
+func TestALostFeedIsAnsweredFromTheLastCopy(t *testing.T) {
+	body := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ordo//test//EN\r\n" +
+		event("UID:1", "SUMMARY:Work", "DTSTART:20260921T090000Z", "DTEND:20260921T170000Z") +
+		"END:VCALENDAR\r\n"
+	var down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, nil)
+	from, to := day("2026-09-21"), day("2026-09-22")
+
+	if _, err := c.Busy(context.Background(), from, to); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	got, err := c.Busy(context.Background(), from, to)
+	var stale *Stale
+	if !errors.As(err, &stale) {
+		t.Fatalf("err = %v, want *Stale", err)
+	}
+	if !strings.Contains(err.Error(), "503") || !strings.Contains(err.Error(), "using the copy read") {
+		t.Errorf("err = %q, want the failure and the copy both named", err)
+	}
+	if len(got) != 1 || got[0].Summary != "Work" {
+		t.Fatalf("busy = %+v, want work from the copy", got)
+	}
+
+	down.Store(false)
+	if _, err := c.Busy(context.Background(), from, to); err != nil {
+		t.Fatalf("a feed that came back is still reported stale: %v", err)
 	}
 }

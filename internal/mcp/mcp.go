@@ -131,11 +131,12 @@ func NewServer(svc *todo.Service) *sdk.Server {
 
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "todo_preferences",
-		Description: "Read the shape of my day, or change it. Called with no fields it reads: working " +
-			"hours, the window the day may use, the deep-work window demanding tasks prefer, the " +
-			"buffer between blocks and the daily cap. Called with fields it changes those and returns " +
-			"the result. This is what \"move deep work to mornings\" or \"I finish at five on Fridays\" " +
-			"means; read it before changing it, since a field left out keeps its current value.",
+		Description: "Read the shape of my day, or change it. Called with no fields it reads: the " +
+			"window the day may use, the deep-work window demanding tasks prefer, the buffer between " +
+			"blocks and the daily cap. Called with fields it changes those and returns the result. " +
+			"This is what \"move deep work to mornings\" means; read it before changing it, since a " +
+			"field left out keeps its current value. Working hours, meals and anything else that takes " +
+			"time are not preferences: they are events on my calendar, which the plan already avoids.",
 	}, t.prefs)
 
 	return srv

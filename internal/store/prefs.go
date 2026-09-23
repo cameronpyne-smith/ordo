@@ -3,21 +3,20 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 )
 
-// Preferences are the shape of a day: when it is available, when work has it,
-// and how much of it may be given away. One row, typed columns rather than a
-// key-value bag, because the set is small and fixed and every field wants
-// validating the way a task's fields do.
+// Preferences are the shape of a day: when it is available, where hard work
+// goes in it, and how much of it may be given away. What takes the day,
+// work included, is the calendar's to say and not a preference: a job has
+// lunch breaks, leave and late meetings that two clock times cannot
+// describe. One row, typed columns rather than a key-value bag, because the
+// set is small and fixed and every field wants validating the way a task's
+// fields do.
 type Preferences struct {
-	DayStart  Clock
-	DayEnd    Clock
-	WorkStart Clock
-	WorkEnd   Clock
-	WorkDays  Weekdays
+	DayStart Clock
+	DayEnd   Clock
 
 	DeepStart Clock
 	DeepEnd   Clock
@@ -27,16 +26,12 @@ type Preferences struct {
 	MaxMinutesDay   int
 }
 
-// DefaultPreferences is a UK working week with the evening and the morning
-// either side of it. Deep work lands in the morning because that is where an
-// undisturbed hour actually exists on a weekday.
+// DefaultPreferences is a waking day with deep work at the start of it, the
+// hour most likely to be undisturbed.
 func DefaultPreferences() Preferences {
 	return Preferences{
 		DayStart:        Clock{7, 0},
 		DayEnd:          Clock{22, 0},
-		WorkStart:       Clock{9, 0},
-		WorkEnd:         Clock{17, 30},
-		WorkDays:        Weekdays{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday},
 		DeepStart:       Clock{7, 0},
 		DeepEnd:         Clock{9, 0},
 		BufferMinutes:   10,
@@ -75,62 +70,9 @@ func (c Clock) On(day time.Time) time.Time {
 
 func (c Clock) Before(other Clock) bool { return c.Minutes() < other.Minutes() }
 
-// Weekdays is a set of days, stored and shown as "mon,tue" in the same
-// spelling the recurrence grammar uses.
-type Weekdays []time.Weekday
-
-var weekdayNames = map[string]time.Weekday{
-	"mon": time.Monday, "tue": time.Tuesday, "wed": time.Wednesday, "thu": time.Thursday,
-	"fri": time.Friday, "sat": time.Saturday, "sun": time.Sunday,
-}
-
-func ParseWeekdays(s string) (Weekdays, error) {
-	s = strings.ToLower(strings.Join(strings.Fields(s), ""))
-	if s == "" {
-		return nil, nil
-	}
-	seen := map[time.Weekday]bool{}
-	var out Weekdays
-	for _, name := range strings.Split(s, ",") {
-		day, ok := weekdayNames[name]
-		if !ok {
-			return nil, fmt.Errorf("day %q must be one of mon, tue, wed, thu, fri, sat, sun: %w", name, ErrInvalid)
-		}
-		if !seen[day] {
-			seen[day] = true
-			out = append(out, day)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return weekIndex(out[i]) < weekIndex(out[j]) })
-	return out, nil
-}
-
-func (w Weekdays) String() string {
-	names := make([]string, 0, len(w))
-	for _, day := range w {
-		names = append(names, strings.ToLower(day.String()[:3]))
-	}
-	return strings.Join(names, ",")
-}
-
-func (w Weekdays) Contains(day time.Weekday) bool {
-	for _, d := range w {
-		if d == day {
-			return true
-		}
-	}
-	return false
-}
-
-// weekIndex orders a week Monday first, as the rules read.
-func weekIndex(d time.Weekday) int { return (int(d) + 6) % 7 }
-
 func (p *Preferences) validate() error {
 	if !p.DayStart.Before(p.DayEnd) {
 		return fmt.Errorf("day_start %s must be before day_end %s: %w", p.DayStart, p.DayEnd, ErrInvalid)
-	}
-	if !p.WorkStart.Before(p.WorkEnd) {
-		return fmt.Errorf("work_start %s must be before work_end %s: %w", p.WorkStart, p.WorkEnd, ErrInvalid)
 	}
 	// Deep work is a preference about where inside the day hard things go, so
 	// a window outside the day could never be honoured.
@@ -162,17 +104,17 @@ func (p *Preferences) validate() error {
 	return nil
 }
 
-const prefColumns = `day_start, day_end, work_start, work_end, work_days, deep_start, deep_end,
+const prefColumns = `day_start, day_end, deep_start, deep_end,
 	buffer_minutes, min_block_minutes, max_minutes_day`
 
 // Preferences reads the single row, falling back to the defaults when the
 // database has never been written to. A fresh install schedules sensibly
 // before anyone has configured anything.
 func (s *Store) Preferences() (Preferences, error) {
-	var dayStart, dayEnd, workStart, workEnd, workDays, deepStart, deepEnd string
+	var dayStart, dayEnd, deepStart, deepEnd string
 	p := DefaultPreferences()
 	err := s.db.QueryRow(`SELECT `+prefColumns+` FROM preferences WHERE id = 1`).Scan(
-		&dayStart, &dayEnd, &workStart, &workEnd, &workDays, &deepStart, &deepEnd,
+		&dayStart, &dayEnd, &deepStart, &deepEnd,
 		&p.BufferMinutes, &p.MinBlockMinutes, &p.MaxMinutesDay)
 	if err == sql.ErrNoRows {
 		return DefaultPreferences(), nil
@@ -185,7 +127,6 @@ func (s *Store) Preferences() (Preferences, error) {
 		into *Clock
 	}{
 		{dayStart, &p.DayStart}, {dayEnd, &p.DayEnd},
-		{workStart, &p.WorkStart}, {workEnd, &p.WorkEnd},
 		{deepStart, &p.DeepStart}, {deepEnd, &p.DeepEnd},
 	} {
 		c, err := ParseClock(f.text)
@@ -194,11 +135,6 @@ func (s *Store) Preferences() (Preferences, error) {
 		}
 		*f.into = c
 	}
-	days, err := ParseWeekdays(workDays)
-	if err != nil {
-		return p, fmt.Errorf("reading preferences: %w", err)
-	}
-	p.WorkDays = days
 	return p, nil
 }
 
@@ -210,17 +146,14 @@ func (s *Store) SetPreferences(p Preferences) (Preferences, error) {
 		return p, err
 	}
 	_, err := s.db.Exec(`INSERT INTO preferences (id, `+prefColumns+`)
-		VALUES (1,?,?,?,?,?,?,?,?,?,?)
+		VALUES (1,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			day_start=excluded.day_start, day_end=excluded.day_end,
-			work_start=excluded.work_start, work_end=excluded.work_end,
-			work_days=excluded.work_days,
 			deep_start=excluded.deep_start, deep_end=excluded.deep_end,
 			buffer_minutes=excluded.buffer_minutes,
 			min_block_minutes=excluded.min_block_minutes,
 			max_minutes_day=excluded.max_minutes_day`,
-		p.DayStart.String(), p.DayEnd.String(), p.WorkStart.String(), p.WorkEnd.String(),
-		p.WorkDays.String(), p.DeepStart.String(), p.DeepEnd.String(),
+		p.DayStart.String(), p.DayEnd.String(), p.DeepStart.String(), p.DeepEnd.String(),
 		p.BufferMinutes, p.MinBlockMinutes, p.MaxMinutesDay)
 	if err != nil {
 		return p, fmt.Errorf("saving preferences: %w", err)

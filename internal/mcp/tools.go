@@ -158,9 +158,6 @@ type PinArgs struct {
 type PrefsArgs struct {
 	DayStart        *string `json:"day_start,omitempty" jsonschema:"HH:MM, the earliest anything may be scheduled"`
 	DayEnd          *string `json:"day_end,omitempty" jsonschema:"HH:MM, the latest anything may be scheduled"`
-	WorkStart       *string `json:"work_start,omitempty" jsonschema:"HH:MM the job starts; this time is never scheduled on a work day"`
-	WorkEnd         *string `json:"work_end,omitempty" jsonschema:"HH:MM the job ends"`
-	WorkDays        *string `json:"work_days,omitempty" jsonschema:"the days the job takes, as mon,tue,wed,thu,fri; empty for none"`
 	DeepStart       *string `json:"deep_start,omitempty" jsonschema:"HH:MM the deep-work window opens; demanding tasks prefer it"`
 	DeepEnd         *string `json:"deep_end,omitempty" jsonschema:"HH:MM the deep-work window closes"`
 	BufferMinutes   *int    `json:"buffer_minutes,omitempty" jsonschema:"minutes left between consecutive blocks"`
@@ -186,9 +183,6 @@ func (t *toolServer) prefs(_ context.Context, _ *sdk.CallToolRequest, args Prefs
 	req := api.PreferencesRequest{
 		DayStart:        args.DayStart,
 		DayEnd:          args.DayEnd,
-		WorkStart:       args.WorkStart,
-		WorkEnd:         args.WorkEnd,
-		WorkDays:        args.WorkDays,
 		DeepStart:       args.DeepStart,
 		DeepEnd:         args.DeepEnd,
 		BufferMinutes:   args.BufferMinutes,

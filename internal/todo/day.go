@@ -2,6 +2,7 @@ package todo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,56 +13,74 @@ import (
 )
 
 // calendarTimeout bounds what a day view waits for an external feed. Past it
-// the plan is built from working hours alone, because a slow calendar must
-// not turn into a slow answer to "what am I doing today".
+// the plan is built from the last copy of the feed, because a slow calendar
+// must not turn into a slow answer to "what am I doing today".
 const calendarTimeout = 10 * time.Second
 
-// Today plans a day. The calendar is advisory: a feed that cannot be read
-// costs the plan some knowledge and is reported alongside it, rather than
-// failing the request. Working hours already describe most of a week.
+// Today plans a day. A feed that cannot be read is reported alongside the
+// plan rather than failing the request: asked directly, a plan with a
+// warning on it is still an answer.
 func (s *Service) Today(ctx context.Context, day string) (api.TodayResponse, error) {
-	plan, message, err := s.plan(ctx, day)
+	plan, calErr, err := s.plan(ctx, day)
 	if err != nil {
 		return api.TodayResponse{}, err
+	}
+	message := ""
+	if calErr != nil {
+		message = calErr.Error()
 	}
 	return api.FromDay(plan, s.calendar.Configured(), message), nil
 }
 
 // Plan is Today before it is shaped for the wire, for the publisher, which
-// wants the times as times. A feed that could not be read has been logged
-// already; the plan is still the best answer there is.
+// wants the times as times. A plan from an old copy of the feed is still the
+// best answer there is. A plan made with no copy at all is refused: nothing
+// asked for it, and publishing it would fill the working day with tasks on
+// every phone the calendar reaches, where leaving the last published plan
+// alone costs nothing until the feed comes back.
 func (s *Service) Plan(ctx context.Context, day string) (schedule.Day, error) {
-	plan, _, err := s.plan(ctx, day)
-	return plan, err
+	plan, calErr, err := s.plan(ctx, day)
+	if err != nil {
+		return plan, err
+	}
+	var stale *calendar.Stale
+	if calErr != nil && !errors.As(calErr, &stale) {
+		return schedule.Day{}, fmt.Errorf("not planning %s without the calendar: %w", day, calErr)
+	}
+	return plan, nil
 }
 
-func (s *Service) plan(ctx context.Context, day string) (schedule.Day, string, error) {
+// plan returns what the calendar said about itself apart from the plan, so
+// each caller decides what an unreadable feed means for it.
+func (s *Service) plan(ctx context.Context, day string) (schedule.Day, error, error) {
 	if day == "" {
 		day = store.Today()
 	}
 	if _, err := store.ParseDate(day); err != nil {
-		return schedule.Day{}, "", fmt.Errorf("today: day %q must be YYYY-MM-DD: %w", day, store.ErrInvalid)
+		return schedule.Day{}, nil, fmt.Errorf("today: day %q must be YYYY-MM-DD: %w", day, store.ErrInvalid)
 	}
 	prefs, err := s.store.Preferences()
 	if err != nil {
-		return schedule.Day{}, "", err
+		return schedule.Day{}, nil, err
 	}
 	tasks, err := s.store.List(store.Filter{Status: store.StatusOpen})
 	if err != nil {
-		return schedule.Day{}, "", err
+		return schedule.Day{}, nil, err
 	}
 
 	busy, calErr := s.busy(ctx, day)
 	plan, err := schedule.Plan(schedule.Options{Day: day, Tasks: tasks, Busy: busy, Prefs: prefs})
 	if err != nil {
-		return schedule.Day{}, "", err
+		return schedule.Day{}, nil, err
 	}
-	message := ""
-	if calErr != nil {
-		message = calErr.Error()
+	var stale *calendar.Stale
+	switch {
+	case errors.As(calErr, &stale):
+		s.log.Warn("planning from an old copy of the calendar", "day", day, "error", calErr)
+	case calErr != nil:
 		s.log.Warn("planning without the calendar", "day", day, "error", calErr)
 	}
-	return plan, message, nil
+	return plan, calErr, nil
 }
 
 func (s *Service) busy(ctx context.Context, day string) ([]calendar.Busy, error) {

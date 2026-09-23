@@ -1,11 +1,11 @@
 // Package calendar turns a published ICS feed into the times a day is
-// already spoken for. It reads and nothing else: ordo never writes a block
-// back to a calendar, because a scheduler that puts things in your diary
-// before you trust it is a scheduler you turn off.
+// already spoken for, work included. It reads and nothing else; the plan is
+// published to a different calendar, by internal/publish.
 //
 // A feed is optional. With none configured the client is nil and reports no
-// busy time, which is a normal state rather than a degraded one: working
-// hours alone already describe most of a week.
+// busy time. Once one is configured it is what keeps tasks out of the
+// working day, so an unreadable feed falls back to the last copy that could
+// be read rather than to an empty diary.
 package calendar
 
 import (
@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	ics "github.com/arran4/golang-ical"
@@ -35,6 +36,37 @@ type Client struct {
 	url  string
 	http *http.Client
 	log  *slog.Logger
+
+	mu   sync.Mutex
+	last *ics.Calendar
+	read time.Time
+}
+
+// Stale is what Busy returns, alongside an answer, when the feed could not
+// be read and the answer comes from the last copy that could. The copy is
+// the better guess by far: most of a calendar repeats, so an hour-old copy
+// still has the working week in it, where no copy would plan tasks into the
+// middle of it.
+type Stale struct {
+	Read time.Time
+	Err  error
+}
+
+func (s *Stale) Error() string {
+	return fmt.Sprintf("%v; using the copy read %s ago", s.Err, ago(time.Since(s.Read)))
+}
+
+func (s *Stale) Unwrap() error { return s.Err }
+
+func ago(d time.Duration) string {
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%d min", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d h", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d days", int(d.Hours()/24))
+	}
 }
 
 // New returns nil when no URL is configured, which every method tolerates.
@@ -58,16 +90,28 @@ func (c *Client) Configured() bool { return c != nil }
 
 // Busy returns the taken stretches overlapping [from, to), merged and in
 // order. A single unreadable event is skipped rather than failing the fetch:
-// most of a calendar is better than none of it, and the packer's answer
-// degrades gracefully towards "the whole window is free".
+// most of a calendar is better than none of it. A feed that cannot be read
+// at all is answered from the last copy that could, with a *Stale error
+// saying so; only when there has never been a copy is the answer nothing.
 func (c *Client) Busy(ctx context.Context, from, to time.Time) ([]Busy, error) {
 	if c == nil {
 		return nil, nil
 	}
 	cal, err := c.fetch(ctx)
-	if err != nil {
+	c.mu.Lock()
+	if err == nil {
+		c.last, c.read = cal, time.Now()
+	} else if c.last != nil {
+		cal, err = c.last, &Stale{Read: c.read, Err: err}
+	}
+	c.mu.Unlock()
+	if cal == nil {
 		return nil, err
 	}
+	return c.expandAll(cal, from, to), err
+}
+
+func (c *Client) expandAll(cal *ics.Calendar, from, to time.Time) []Busy {
 	var out []Busy
 	for _, event := range cal.Events() {
 		spans, err := expand(event, from, to)
@@ -77,7 +121,7 @@ func (c *Client) Busy(ctx context.Context, from, to time.Time) ([]Busy, error) {
 		}
 		out = append(out, spans...)
 	}
-	return Merge(out), nil
+	return Merge(out)
 }
 
 func (c *Client) fetch(ctx context.Context) (*ics.Calendar, error) {

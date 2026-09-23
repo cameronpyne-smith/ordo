@@ -126,15 +126,11 @@ type PinRequest struct {
 	Day string `json:"day,omitempty"`
 }
 
-// Preferences is the shape of a day. Times are HH:MM and days are the same
-// mon,tue spelling the recurrence grammar uses, because one timezone and one
-// user means a clock is all a time ever has to be here.
+// Preferences is the shape of a day. Times are HH:MM, because one timezone
+// and one user means a clock is all a time ever has to be here.
 type Preferences struct {
 	DayStart        string `json:"day_start"`
 	DayEnd          string `json:"day_end"`
-	WorkStart       string `json:"work_start"`
-	WorkEnd         string `json:"work_end"`
-	WorkDays        string `json:"work_days"`
 	DeepStart       string `json:"deep_start"`
 	DeepEnd         string `json:"deep_end"`
 	BufferMinutes   int    `json:"buffer_minutes"`
@@ -148,9 +144,6 @@ type Preferences struct {
 type PreferencesRequest struct {
 	DayStart        *string `json:"day_start,omitempty"`
 	DayEnd          *string `json:"day_end,omitempty"`
-	WorkStart       *string `json:"work_start,omitempty"`
-	WorkEnd         *string `json:"work_end,omitempty"`
-	WorkDays        *string `json:"work_days,omitempty"`
 	DeepStart       *string `json:"deep_start,omitempty"`
 	DeepEnd         *string `json:"deep_end,omitempty"`
 	BufferMinutes   *int    `json:"buffer_minutes,omitempty"`
