@@ -34,6 +34,7 @@ func newRootCmd() *cobra.Command {
 		newListCmd(&configPath),
 		newAddCmd(&configPath),
 		newDoneCmd(&configPath),
+		newWorkCmd(&configPath),
 		newSetCmd(&configPath),
 		newUndoCmd(&configPath),
 		newEnrichCmd(&configPath),

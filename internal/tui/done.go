@@ -18,7 +18,7 @@ import (
 // confirm and plainly wrong when it is: asking after the fact is the only
 // moment the answer is still remembered.
 func (m Model) askTook(t api.Task, from mode) (tea.Model, tea.Cmd) {
-	m.mode, m.took, m.tookFrom, m.failure = modeTook, t, from, ""
+	m.mode, m.took, m.tookFrom, m.working, m.failure = modeTook, t, from, false, ""
 	m.input.Placeholder = "unknown"
 	m.input.SetValue(textEstimate(t))
 	m.input.CursorEnd()
@@ -27,12 +27,12 @@ func (m Model) askTook(t api.Task, from mode) (tea.Model, tea.Cmd) {
 }
 
 // keyTook completes the task on enter, with the minutes typed or none when
-// the line is empty. esc backs out without completing anything, the same
-// as esc everywhere else in ordo.
+// the line is empty, or for a session goes on to ask what is left. esc backs
+// out without logging anything, the same as esc everywhere else in ordo.
 func (m Model) keyTook(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.mode = m.tookFrom
+		m.mode, m.working = m.tookFrom, false
 		m.input.Blur()
 		return m, nil
 	case "enter":
@@ -41,23 +41,13 @@ func (m Model) keyTook(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.failure = err.Error()
 			return m, nil
 		}
+		if m.working {
+			return m.askLeft(minutes)
+		}
 		m.mode, m.failure = m.tookFrom, ""
 		m.input.Blur()
-		c, id := m.client, m.took.ID
-		if m.tookFrom == modeDay {
-			return m, func() tea.Msg {
-				note, err := complete(c, id, minutes)
-				if err != nil {
-					return dayMsg{err: err}
-				}
-				resp, err := c.Today("")
-				return dayActedMsg{note: note, resp: resp, err: err}
-			}
-		}
-		return m, func() tea.Msg {
-			note, err := complete(c, id, minutes)
-			return actedMsg{note: note, err: err}
-		}
+		id := m.took.ID
+		return m, m.logged(func(c *client.Client) (string, error) { return complete(c, id, minutes) })
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
@@ -93,6 +83,9 @@ func complete(c *client.Client, id int64, minutes int) (string, error) {
 
 func (m Model) tookFooter(width int) string {
 	prompt := "minutes it took: " + m.input.View()
+	if m.mode == modeLeft {
+		prompt = "minutes left, 0 if it is finished: " + m.input.View()
+	}
 	if m.failure != "" {
 		return rule(width) + "\n" + truncate(errorStyle.Render(m.failure), width) + "\n" + prompt
 	}

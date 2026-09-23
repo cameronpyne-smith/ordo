@@ -95,8 +95,12 @@ func timeline(plan *api.TodayResponse) []string {
 		if b.Task.PinnedOn != "" {
 			title = "📌 " + title
 		}
+		length := minutesText(b.Minutes)
+		if b.Left > 0 {
+			length += " of " + minutesText(b.Left) + " left"
+		}
 		rows = append(rows, entry{b.Start, fmt.Sprintf("%s-%s\t%4d\t%s\t%s",
-			b.Start, b.End, b.Task.ID, title, minutes(b.Minutes))})
+			b.Start, b.End, b.Task.ID, title, length)})
 	}
 	for _, b := range plan.Busy {
 		summary := b.Summary
@@ -115,7 +119,7 @@ func timeline(plan *api.TodayResponse) []string {
 	return out
 }
 
-func minutes(n int) string {
+func minutesText(n int) string {
 	if n < 60 {
 		return fmt.Sprintf("%d min", n)
 	}
@@ -224,6 +228,7 @@ func prefsRequest(args []string) (api.PreferencesRequest, error) {
 		"buffer_minutes":      &req.BufferMinutes,
 		"min_block_minutes":   &req.MinBlockMinutes,
 		"max_minutes_per_day": &req.MaxMinutesDay,
+		"max_block_minutes":   &req.MaxBlockMinutes,
 	}
 	for _, arg := range args {
 		key, value, ok := strings.Cut(arg, "=")
@@ -274,6 +279,7 @@ func printPrefs(w io.Writer, p *api.Preferences) {
 		{"buffer_minutes", fmt.Sprint(p.BufferMinutes)},
 		{"min_block_minutes", fmt.Sprint(p.MinBlockMinutes)},
 		{"max_minutes_per_day", fmt.Sprint(p.MaxMinutesDay)},
+		{"max_block_minutes", fmt.Sprint(p.MaxBlockMinutes)},
 	} {
 		fmt.Fprintf(tw, "%s\t%s\n", row[0], row[1])
 	}

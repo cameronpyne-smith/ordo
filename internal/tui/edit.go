@@ -37,16 +37,19 @@ type field struct {
 	key  string
 	show func(api.Task) string
 	text func(api.Task) string
+	// only, when set, says whether the row is worth showing for this task.
+	only func(api.Task) bool
 }
 
 var fields = []field{
-	{"due", "u", func(t api.Task) string { return t.Due }, func(t api.Task) string { return t.Due }},
-	{"priority", "p", func(t api.Task) string { return t.Priority }, nil},
-	{"difficulty", "d", func(t api.Task) string { return t.Difficulty }, nil},
-	{"estimate", "m", showEstimate, textEstimate},
-	{"repeats", "r", showRepeats, textRepeats},
-	{"notes", "n", func(t api.Task) string { return preview(t.Notes) }, func(t api.Task) string { return t.Notes }},
-	{"title", "t", func(t api.Task) string { return t.Title }, func(t api.Task) string { return t.Title }},
+	{"due", "u", func(t api.Task) string { return t.Due }, func(t api.Task) string { return t.Due }, nil},
+	{"priority", "p", func(t api.Task) string { return t.Priority }, nil, nil},
+	{"difficulty", "d", func(t api.Task) string { return t.Difficulty }, nil, nil},
+	{"estimate", "m", showEstimate, textEstimate, nil},
+	{"left", "l", showLeft, textLeft, func(t api.Task) bool { return t.RemainingMinutes > 0 }},
+	{"repeats", "r", showRepeats, textRepeats, nil},
+	{"notes", "n", func(t api.Task) string { return preview(t.Notes) }, func(t api.Task) string { return t.Notes }, nil},
+	{"title", "t", func(t api.Task) string { return t.Title }, func(t api.Task) string { return t.Title }, nil},
 }
 
 func (f field) enum() bool { return f.text == nil }
@@ -63,6 +66,20 @@ func textEstimate(t api.Task) string {
 		return ""
 	}
 	return strconv.Itoa(t.EstimateMinutes)
+}
+
+func showLeft(t api.Task) string {
+	if t.RemainingMinutes == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d min", t.RemainingMinutes)
+}
+
+func textLeft(t api.Task) string {
+	if t.RemainingMinutes == 0 {
+		return ""
+	}
+	return strconv.Itoa(t.RemainingMinutes)
 }
 
 func showRepeats(t api.Task) string {
@@ -226,6 +243,16 @@ func editRequest(name, value string) (api.EditRequest, error) {
 			minutes = n
 		}
 		req.EstimateMinutes = &minutes
+	case "left":
+		minutes := 0
+		if value != "" {
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 0 {
+				return req, fmt.Errorf("left %q must be a number of minutes", value)
+			}
+			minutes = n
+		}
+		req.RemainingMinutes = &minutes
 	case "repeats":
 		kind, rule := "", ""
 		if value != "" {
@@ -269,6 +296,9 @@ func (m Model) editBody(width int) string {
 	// reads everywhere else in ordo, rather than stranded at the far edge
 	// of a wide terminal.
 	for _, f := range fields {
+		if f.only != nil && !f.only(m.edit) {
+			continue
+		}
 		value := f.show(m.edit)
 		if value == "" {
 			value = faintStyle.Render("—")
@@ -297,6 +327,6 @@ func (m Model) editFooter(width int) string {
 	if m.failure != "" {
 		status = errorStyle.Render(m.failure)
 	}
-	keys := faintStyle.Render("p d cycle · shift reverses · u m r n t edit · esc back · ? help · q quit")
+	keys := faintStyle.Render("p d cycle · shift reverses · u m l r n t edit · esc back · ? help · q quit")
 	return rule(width) + "\n" + pad(keys, status, width)
 }

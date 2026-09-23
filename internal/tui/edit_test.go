@@ -285,9 +285,28 @@ func TestEditViewShowsEveryFieldAndItsKey(t *testing.T) {
 		}
 	}
 	for _, f := range fields {
+		if f.only != nil && !f.only(m.edit) {
+			continue
+		}
 		if !strings.Contains(view, f.name) {
 			t.Errorf("view is missing the %s row", f.name)
 		}
+	}
+}
+
+// What is left only means something once work has started, so the row
+// appears then and not before.
+func TestEditViewShowsWhatIsLeftOnceStarted(t *testing.T) {
+	m := New(nil)
+	m.mode = modeEdit
+	m.width, m.height = 100, 30
+	m.edit = task(3, "Write the report", func(x *api.Task) { x.EstimateMinutes = 300 })
+	if strings.Contains(m.View(), "left") {
+		t.Fatalf("a task not started shows a left row:\n%s", m.View())
+	}
+	m.edit.RemainingMinutes = 240
+	if view := m.View(); !strings.Contains(view, "left") || !strings.Contains(view, "240 min") {
+		t.Fatalf("want the left row with 240 min:\n%s", view)
 	}
 }
 

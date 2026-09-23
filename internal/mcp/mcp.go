@@ -66,13 +66,24 @@ func NewServer(svc *todo.Service) *sdk.Server {
 		Name: "todo_done",
 		Description: "Complete a task. A recurring task stays open and its due date advances to the next " +
 			"occurrence; a one-off becomes done. Pass minutes when you know how long it really took, " +
-			"which is what calibrates future estimates.",
+			"which is what calibrates future estimates. For a session that leaves some still to do, " +
+			"use todo_work.",
 	}, t.done)
 
 	sdk.AddTool(srv, &sdk.Tool{
+		Name: "todo_work",
+		Description: "Log a session on a one-off task without finishing it: \"did an hour on the report, " +
+			"about two left\". The task stays open and the plan gives it what is left, a piece a day " +
+			"when that is more than one sitting. Left defaults to what was left less minutes; pass it " +
+			"when the work turned out bigger or smaller than that, and 0 finishes the task. Refused " +
+			"for a recurring task, whose occurrences are done in one go.",
+	}, t.work)
+
+	sdk.AddTool(srv, &sdk.Tool{
 		Name: "todo_undo",
-		Description: "Remove a task's most recent completion: the fix for something ticked off by mistake. " +
-			"A one-off reopens; a recurring task's previous due date comes back.",
+		Description: "Remove the most recent thing logged against a task: the fix for something ticked " +
+			"off by mistake. A one-off reopens; a recurring task's previous due date comes back; a " +
+			"session from todo_work is taken back and what was left before it returns.",
 	}, t.undo)
 
 	sdk.AddTool(srv, &sdk.Tool{
@@ -133,7 +144,7 @@ func NewServer(svc *todo.Service) *sdk.Server {
 		Name: "todo_preferences",
 		Description: "Read the shape of my day, or change it. Called with no fields it reads: the " +
 			"window the day may use, the deep-work window demanding tasks prefer, the buffer between " +
-			"blocks and the daily cap. Called with fields it changes those and returns the result. " +
+			"blocks, the daily cap and the longest single sitting. Called with fields it changes those and returns the result. " +
 			"This is what \"move deep work to mornings\" means; read it before changing it, since a " +
 			"field left out keeps its current value. Working hours, meals and anything else that takes " +
 			"time are not preferences: they are events on my calendar, which the plan already avoids.",

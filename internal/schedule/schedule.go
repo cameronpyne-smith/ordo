@@ -26,12 +26,15 @@ type Window struct {
 
 func (w Window) Minutes() int { return int(w.End.Sub(w.Start) / time.Minute) }
 
-// Block is one task placed at a time, with the reason it landed there.
+// Block is one task placed at a time, with the reason it landed there. Left
+// is set only when the block is a piece of a bigger task, and is what the
+// task has left before it.
 type Block struct {
 	Task    *store.Task
 	Start   time.Time
 	End     time.Time
 	Minutes int
+	Left    int
 	Reason  string
 }
 
@@ -70,6 +73,10 @@ const (
 	estimateUnknown = 30
 )
 
+// chunkFloor is the shortest piece of a big task worth starting. Under half
+// an hour the sitting goes on getting back into it.
+const chunkFloor = 30
+
 // Estimate is how long a task is taken to need.
 func Estimate(t *store.Task) int {
 	if t.EstimateMinutes > 0 {
@@ -84,6 +91,43 @@ func Estimate(t *store.Task) int {
 		return estimateHigh
 	}
 	return estimateUnknown
+}
+
+// Remaining is how much of a task is still to do: what was left after the
+// last session on it, or all of it when none has been logged.
+func Remaining(t *store.Task) int {
+	if t.RemainingMinutes > 0 {
+		return t.RemainingMinutes
+	}
+	return Estimate(t)
+}
+
+// ask is what one day asks of a task. Most tasks are done in one go, so the
+// day wants all of it and nothing less will do. A one-off with more left
+// than one sitting is worked on a piece a day instead: a sitting's worth, or
+// more when the days before the deadline are too few for that, and it will
+// shrink into a shorter gap as long as the gap is worth starting in.
+type ask struct {
+	minutes int
+	floor   int
+	left    int
+	catchUp bool
+}
+
+func askOf(day string, t *store.Task, p store.Preferences) ask {
+	left := Remaining(t)
+	if t.Recurring() || left <= p.MaxBlockMinutes {
+		return ask{minutes: left, floor: left}
+	}
+	a := ask{minutes: p.MaxBlockMinutes, left: left}
+	if t.Due != "" {
+		daysLeft := max(daysBetween(day, t.Due)+1, 1)
+		if need := (left + daysLeft - 1) / daysLeft; need > a.minutes {
+			a.minutes, a.catchUp = need, true
+		}
+	}
+	a.floor = min(chunkFloor, a.minutes)
+	return a
 }
 
 // Plan places what it can of the day's candidates into the day's free time.
@@ -110,15 +154,16 @@ func Plan(o Options) (Day, error) {
 	cands := candidates(o.Day, o.Tasks)
 
 	buffer := time.Duration(o.Prefs.BufferMinutes) * time.Minute
-	place := func(t *store.Task, i int, start time.Time, inDeep bool) {
-		want := Estimate(t)
-		end := start.Add(time.Duration(want) * time.Minute)
-		day.Blocks = append(day.Blocks, Block{
-			Task: t, Start: start, End: end, Minutes: want,
-			Reason: reason(o.Day, t, inDeep),
-		})
-		day.Planned += want
-		budget -= want
+	place := func(t *store.Task, a ask, minutes, i int, start time.Time, inDeep bool) {
+		end := start.Add(time.Duration(minutes) * time.Minute)
+		b := Block{Task: t, Start: start, End: end, Minutes: minutes, Reason: reason(o.Day, t, inDeep)}
+		if a.left > minutes {
+			b.Left = a.left
+			b.Reason += " · " + pieceReason(a, o.Prefs)
+		}
+		day.Blocks = append(day.Blocks, b)
+		day.Planned += minutes
+		budget -= minutes
 		free = reserve(free, i, start, end, buffer, o.Prefs.MinBlockMinutes)
 	}
 
@@ -131,15 +176,15 @@ func Plan(o Options) (Day, error) {
 		if t.Difficulty != store.DifficultyHigh {
 			continue
 		}
-		want := Estimate(t)
-		if want > budget {
+		a := askOf(o.Day, t, o.Prefs)
+		if a.minutes > budget {
 			continue
 		}
-		i, start := fitDeep(free, want, deep)
+		i, start := fitDeep(free, a.minutes, deep)
 		if i < 0 {
 			continue
 		}
-		place(t, i, start, true)
+		place(t, a, a.minutes, i, start, true)
 		done[t.ID] = true
 	}
 
@@ -147,18 +192,24 @@ func Plan(o Options) (Day, error) {
 		if done[t.ID] {
 			continue
 		}
-		want := Estimate(t)
-		if want > budget {
-			day.Skipped = append(day.Skipped, Skip{Task: t, Reason: skipReason(budget, want, o.Prefs)})
+		a := askOf(o.Day, t, o.Prefs)
+		want := min(a.minutes, budget)
+		if want < a.floor {
+			day.Skipped = append(day.Skipped, Skip{Task: t, Reason: skipReason(budget, a.floor, o.Prefs)})
 			continue
 		}
 		i := fitAny(free, want)
+		if i < 0 && a.floor < want {
+			if j, room := longest(free); room >= a.floor {
+				i, want = j, room
+			}
+		}
 		if i < 0 {
 			day.Skipped = append(day.Skipped, Skip{Task: t,
-				Reason: fmt.Sprintf("no free stretch left that is %d minutes long", want)})
+				Reason: fmt.Sprintf("no free stretch left that is %d minutes long", a.floor)})
 			continue
 		}
-		place(t, i, free[i].Start, false)
+		place(t, a, want, i, free[i].Start, false)
 	}
 
 	sort.SliceStable(day.Blocks, func(i, j int) bool { return day.Blocks[i].Start.Before(day.Blocks[j].Start) })
@@ -216,6 +267,18 @@ func fitDeep(free []Window, want int, deep Window) (int, time.Time) {
 	return -1, time.Time{}
 }
 
+// longest is the biggest free window, for a piece of work that can shrink to
+// fit when nothing takes the whole of it.
+func longest(free []Window) (int, int) {
+	best, room := -1, 0
+	for i, w := range free {
+		if w.Minutes() > room {
+			best, room = i, w.Minutes()
+		}
+	}
+	return best, room
+}
+
 func fitAny(free []Window, want int) int {
 	for i, w := range free {
 		if w.Minutes() >= want {
@@ -266,6 +329,16 @@ func reason(day string, t *store.Task, inDeep bool) string {
 		parts = append(parts, fmt.Sprintf("%d min guessed from its difficulty", Estimate(t)))
 	}
 	return join(parts)
+}
+
+// pieceReason says what a piece is a piece of, and when it is bigger than a
+// sitting, that the deadline is why.
+func pieceReason(a ask, p store.Preferences) string {
+	out := fmt.Sprintf("%d min left", a.left)
+	if a.catchUp {
+		out += fmt.Sprintf(", more than the usual %d a day to make the deadline", p.MaxBlockMinutes)
+	}
+	return out
 }
 
 func skipReason(budget, want int, p store.Preferences) string {

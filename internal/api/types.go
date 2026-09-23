@@ -3,22 +3,23 @@ package api
 // Task is the wire form. Empty optional fields are omitted rather than sent
 // as null, so a bare task is a small object.
 type Task struct {
-	ID              int64  `json:"id"`
-	Title           string `json:"title"`
-	Notes           string `json:"notes,omitempty"`
-	Status          string `json:"status"`
-	Difficulty      string `json:"difficulty,omitempty"`
-	Priority        string `json:"priority,omitempty"`
-	EstimateMinutes int    `json:"estimate_minutes,omitempty"`
-	Due             string `json:"due,omitempty"`
-	Overdue         bool   `json:"overdue,omitempty"`
-	Recur           *Recur `json:"recur,omitempty"`
-	Mnemo           *Link  `json:"mnemo,omitempty"`
-	PinnedOn        string `json:"pinned_on,omitempty"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
-	DoneAt          string `json:"done_at,omitempty"`
-	Enriched        bool   `json:"enriched"`
+	ID               int64  `json:"id"`
+	Title            string `json:"title"`
+	Notes            string `json:"notes,omitempty"`
+	Status           string `json:"status"`
+	Difficulty       string `json:"difficulty,omitempty"`
+	Priority         string `json:"priority,omitempty"`
+	EstimateMinutes  int    `json:"estimate_minutes,omitempty"`
+	RemainingMinutes int    `json:"remaining_minutes,omitempty"`
+	Due              string `json:"due,omitempty"`
+	Overdue          bool   `json:"overdue,omitempty"`
+	Recur            *Recur `json:"recur,omitempty"`
+	Mnemo            *Link  `json:"mnemo,omitempty"`
+	PinnedOn         string `json:"pinned_on,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	DoneAt           string `json:"done_at,omitempty"`
+	Enriched         bool   `json:"enriched"`
 }
 
 type Recur struct {
@@ -82,22 +83,31 @@ type CreateRequest struct {
 }
 
 // EditRequest changes only the fields it carries. An absent or null field is
-// untouched; an empty string clears a text field and a zero estimate clears
-// the estimate.
+// untouched; an empty string clears a text field, a zero estimate clears the
+// estimate and a zero remaining puts the task back to its whole estimate.
 type EditRequest struct {
-	Title           *string `json:"title,omitempty"`
-	Notes           *string `json:"notes,omitempty"`
-	Status          *string `json:"status,omitempty"`
-	Difficulty      *string `json:"difficulty,omitempty"`
-	Priority        *string `json:"priority,omitempty"`
-	EstimateMinutes *int    `json:"estimate_minutes,omitempty"`
-	Due             *string `json:"due,omitempty"`
-	RecurKind       *string `json:"recur_kind,omitempty"`
-	RecurRule       *string `json:"recur_rule,omitempty"`
+	Title            *string `json:"title,omitempty"`
+	Notes            *string `json:"notes,omitempty"`
+	Status           *string `json:"status,omitempty"`
+	Difficulty       *string `json:"difficulty,omitempty"`
+	Priority         *string `json:"priority,omitempty"`
+	EstimateMinutes  *int    `json:"estimate_minutes,omitempty"`
+	RemainingMinutes *int    `json:"remaining_minutes,omitempty"`
+	Due              *string `json:"due,omitempty"`
+	RecurKind        *string `json:"recur_kind,omitempty"`
+	RecurRule        *string `json:"recur_rule,omitempty"`
 }
 
 type DoneRequest struct {
 	Minutes int `json:"minutes,omitempty"`
+}
+
+// WorkRequest logs a session on a task without finishing it. Left is what
+// is still to do afterwards; absent means what was left less Minutes, and 0
+// finishes the task.
+type WorkRequest struct {
+	Minutes int  `json:"minutes,omitempty"`
+	Left    *int `json:"left,omitempty"`
 }
 
 type ListResponse struct {
@@ -136,6 +146,7 @@ type Preferences struct {
 	BufferMinutes   int    `json:"buffer_minutes"`
 	MinBlockMinutes int    `json:"min_block_minutes"`
 	MaxMinutesDay   int    `json:"max_minutes_per_day"`
+	MaxBlockMinutes int    `json:"max_block_minutes"`
 }
 
 // PreferencesRequest changes only what it carries, like EditRequest. The
@@ -149,14 +160,18 @@ type PreferencesRequest struct {
 	BufferMinutes   *int    `json:"buffer_minutes,omitempty"`
 	MinBlockMinutes *int    `json:"min_block_minutes,omitempty"`
 	MaxMinutesDay   *int    `json:"max_minutes_per_day,omitempty"`
+	MaxBlockMinutes *int    `json:"max_block_minutes,omitempty"`
 }
 
-// Block is one task placed at a time, carrying why it landed there.
+// Block is one task placed at a time, carrying why it landed there. Left is
+// set when the block is a piece of a bigger task: what the task has left
+// before it.
 type Block struct {
 	Task    Task   `json:"task"`
 	Start   string `json:"start"`
 	End     string `json:"end"`
 	Minutes int    `json:"minutes"`
+	Left    int    `json:"left_minutes,omitempty"`
 	Reason  string `json:"reason"`
 }
 

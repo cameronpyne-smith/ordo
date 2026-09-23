@@ -55,14 +55,21 @@ const (
 	DifficultyHigh   Difficulty = "high"
 )
 
-// QuickWinMinutes is the longest a quick win can take. Difficulty alone
-// cannot say it: an easy job that fills an evening is not a quick win.
+// QuickWinMinutes is the longest a quick win can take.
 const QuickWinMinutes = 30
 
-// QuickWin is low difficulty and short. An unset estimate counts as short,
-// since the scheduler takes low difficulty to mean a quarter of an hour.
-func QuickWin(d Difficulty, estimate int) bool {
-	return d == DifficultyLow && estimate <= QuickWinMinutes
+// QuickWin is about time, not difficulty: ten minutes of something hard is
+// still ten minutes, and the last stretch of a big task you are already into
+// is a quick win to finish off. Only when nothing says how long it takes does
+// difficulty stand in, and then only low difficulty counts as short.
+func QuickWin(d Difficulty, estimate, remaining int) bool {
+	switch {
+	case remaining > 0:
+		return remaining <= QuickWinMinutes
+	case estimate > 0:
+		return estimate <= QuickWinMinutes
+	}
+	return d == DifficultyLow
 }
 
 // Priority is empty until the user or the model sets one; views treat empty
@@ -90,16 +97,20 @@ type Task struct {
 	Difficulty      Difficulty
 	Priority        Priority
 	EstimateMinutes int // 0 = unset
-	Due             string
-	RecurKind       RecurKind
-	RecurRule       string
-	MnemoSlug       string
-	MnemoTitle      string
-	PinnedOn        string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	DoneAt          *time.Time
-	EnrichedAt      *time.Time
+	// RemainingMinutes is what is left once work has started, 0 until then.
+	// The estimate stays the first guess, so a finished task can be compared
+	// with what it really took.
+	RemainingMinutes int
+	Due              string
+	RecurKind        RecurKind
+	RecurRule        string
+	MnemoSlug        string
+	MnemoTitle       string
+	PinnedOn         string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	DoneAt           *time.Time
+	EnrichedAt       *time.Time
 }
 
 // Overdue reports whether an open task's due date has passed.
@@ -110,6 +121,10 @@ func (t *Task) Overdue() bool {
 // Recurring reports whether completing this task advances it rather than
 // closing it.
 func (t *Task) Recurring() bool { return t.RecurKind != "" }
+
+// Started reports whether work has been logged against this task without
+// finishing it.
+func (t *Task) Started() bool { return t.RemainingMinutes > 0 }
 
 // Linked reports whether this task points at a note in the vault.
 func (t *Task) Linked() bool { return t.MnemoSlug != "" }
@@ -145,6 +160,9 @@ func (t *Task) validate() error {
 	}
 	if t.EstimateMinutes < 0 {
 		return fmt.Errorf("estimate_minutes must be positive: %w", ErrInvalid)
+	}
+	if t.RemainingMinutes < 0 {
+		return fmt.Errorf("remaining_minutes must be positive: %w", ErrInvalid)
 	}
 	if t.PinnedOn != "" {
 		if _, err := ParseDate(t.PinnedOn); err != nil {

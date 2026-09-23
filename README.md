@@ -69,7 +69,10 @@ ordo list --recurring
 ordo list --note career-transition-quantitative-researcher
 ordo set 4 priority=high due=    # an empty value clears a field
 ordo done 4 --minutes 25
-ordo undo 4
+ordo work 4 60                   # an hour on it, not finished
+ordo work 4 60 --left 180        # ...and it turned out bigger than that
+ordo set 4 left=240              # re-estimate what is left without logging work
+ordo undo 4                      # the last completion or session
 ordo enrich 4                    # read it with the local model again
 ordo link 4 latent               # point a task at a mnemo note
 ordo link 4                      # ...or see which notes it could point at
@@ -227,11 +230,11 @@ someday
    16            Renew the passport ~
 ────────────────────────────────────────────────────────────────────────────
 Send the quant CV to the recruiter by Friday
-overdue by 2 days · high priority · low difficulty, so a quick win
+overdue by 2 days · high priority · low difficulty · a quick win
 [[career-transition-quantitative-researcher]] The quant plan
 ────────────────────────────────────────────────────────────────────────────
 1 open  2 overdue  3 quick wins  4 high priority  5 linked  6 recurring  7 done
-enter open · a add · d done · u undo · e enrich · l note · p pin · t today · x delete · q quit
+enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit
 ```
 
 The line under the list is the point of the thing: it names the fields that
@@ -245,7 +248,15 @@ so the new row appears bare and fills in a second or two later while you
 watch. `d` asks how long the task took before completing it, with the
 estimate already filled in: enter keeps it, a number replaces it, an empty
 line records no time, and esc completes nothing. Those minutes are what the
-estimates will be calibrated against. `l` opens what mnemo knows about the selected task — the note and its
+estimates will be calibrated against. `w` is for work that is not finished:
+it asks the same question, then how much is left, filled in with what was
+left less the time just spent. Enter keeps it; a number says the job turned
+out bigger or smaller than that, since time spent is not progress; 0 means
+it is finished after all. `d` always finishes and `w` never does, and `u`
+takes back whichever was last. A repeating task is done in one go, so `w`
+refuses one. A quick win is anything with half an hour or less to go,
+whatever its difficulty, including the last stretch of a big task; with no
+estimate at all, only low difficulty counts. `l` opens what mnemo knows about the selected task — the note and its
 neighbourhood if it is linked, the notes it could point at if it is not, or
 the notes it might have become if its own has been renamed away.
 
@@ -276,8 +287,14 @@ ordo · #3
 
   [[latent]] Full reference dump for the project
 ────────────────────────────────────────────────────────────────────────────
-p d cycle · shift reverses · u m r n t edit · esc back · ? help · q quit
+p d cycle · shift reverses · u m l r n t edit · esc back · ? help · q quit
 ```
+
+Once work has started the pane gains a `left` row under the estimate, and
+`l` edits it: that is a re-estimate part way through, and it logs no work.
+The estimate stays the first guess from then on, so a finished task can be
+set against what it really took; left is what the plan uses, and clearing it
+goes back to the estimate.
 
 Cycling never lands on the unset value: clearing a field is deliberate
 enough to be worth typing, and one press too many should not throw away what
@@ -332,6 +349,21 @@ deep-work window** first, and a task too long to fit inside it claims nothing
 and is placed normally, because preferring a window is not the same as
 requiring one.
 
+**A task too big for one sitting is worked on a piece a day.** Any one-off
+task with more left than `max_block_minutes` gets that much each day from the
+day it is added, not from its due date, in its usual place in the order.
+When the days before the deadline are too few for that, the piece grows to
+what is left divided by the days to go, today included, and the reason says
+it is catching up. With no gap long enough, a piece shrinks into the longest
+one there is, down to half an hour; a task meant to be done in one go never
+shrinks. A task gets one piece a day at most, a repeating task is never cut
+up, and logging a session with `w` or `ordo work` is what moves the rest
+along: tomorrow's piece comes out of what is left.
+
+```
+07:00-08:00     4  Write the report         1h of 5h left
+```
+
 ```sh
 ordo prefs
 day_start            07:00     # the earliest anything is scheduled
@@ -341,6 +373,7 @@ deep_end             09:00
 buffer_minutes       10        # left between consecutive blocks
 min_block_minutes    15        # shorter stretches are not offered
 max_minutes_per_day  240       # the cap on what one day is given
+max_block_minutes    60        # one sitting; bigger tasks go a piece a day
 ```
 
 Changing one leaves the rest alone, and a day that could not exist is refused
@@ -421,7 +454,7 @@ finished today and would show the same tasks twice.
 
 The daemon serves MCP at `/mcp` on the same port, behind the same bearer
 token, so a Claude session gets the same operations as the CLI: `todo_list`,
-`todo_add`, `todo_done`, `todo_undo`, `todo_set`, `todo_link`,
+`todo_add`, `todo_done`, `todo_work`, `todo_undo`, `todo_set`, `todo_link`,
 `todo_related`, `todo_delete`, `todo_today`, `todo_pin`, `todo_preferences`.
 
 ```sh

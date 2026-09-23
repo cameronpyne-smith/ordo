@@ -112,6 +112,18 @@ var migrations = []string{
 	`ALTER TABLE preferences DROP COLUMN work_start;
 	ALTER TABLE preferences DROP COLUMN work_end;
 	ALTER TABLE preferences DROP COLUMN work_days;`,
+
+	// A task too big for one sitting is worked on over several days. What is
+	// left is its own column so the estimate stays the first guess, and a
+	// session is a completion row marked partial so undo stays "remove the
+	// last thing logged" over one table. remaining_before is what the task
+	// had before that session, which makes undoing one exact even when the
+	// number was edited by hand in between.
+	`ALTER TABLE tasks ADD COLUMN remaining_minutes INTEGER;
+	ALTER TABLE completions ADD COLUMN partial INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE completions ADD COLUMN left_minutes INTEGER;
+	ALTER TABLE completions ADD COLUMN remaining_before INTEGER;
+	ALTER TABLE preferences ADD COLUMN max_block_minutes INTEGER NOT NULL DEFAULT 60;`,
 }
 
 func (s *Store) migrate(path string) error {
@@ -170,7 +182,7 @@ func (s *Store) snapshotBefore(path string, to int) (string, error) {
 	return out, nil
 }
 
-const taskColumns = `id, title, notes, status, difficulty, priority, estimate_minutes, due,
+const taskColumns = `id, title, notes, status, difficulty, priority, estimate_minutes, remaining_minutes, due,
 	recur_kind, recur_rule, mnemo_slug, mnemo_title, pinned_on, created_at, updated_at, done_at, enriched_at`
 
 func (s *Store) Create(t *Task) (*Task, error) {
@@ -268,8 +280,9 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 		where = append(where, "recur_kind IS NOT NULL")
 	}
 	if f.Quick {
-		where = append(where, "difficulty = ? AND (estimate_minutes IS NULL OR estimate_minutes <= ?)")
-		args = append(args, string(DifficultyLow), QuickWinMinutes)
+		where = append(where, "(COALESCE(remaining_minutes, estimate_minutes) <= ? OR "+
+			"(remaining_minutes IS NULL AND estimate_minutes IS NULL AND difficulty = ?))")
+		args = append(args, QuickWinMinutes, string(DifficultyLow))
 	}
 
 	query := `SELECT ` + taskColumns + ` FROM tasks`
@@ -301,7 +314,8 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 }
 
 // Edit carries only the fields a caller wants changed. An empty string clears
-// a nullable text field; a zero estimate clears the estimate.
+// a nullable text field; a zero estimate clears the estimate, and a zero
+// remaining puts the task back to its whole estimate.
 type Edit struct {
 	Title      *string
 	Notes      *string
@@ -309,6 +323,7 @@ type Edit struct {
 	Difficulty *Difficulty
 	Priority   *Priority
 	Estimate   *int
+	Remaining  *int
 	Due        *string
 	RecurKind  *RecurKind
 	RecurRule  *string
@@ -319,7 +334,7 @@ type Edit struct {
 // Empty reports whether the edit would change nothing.
 func (e Edit) Empty() bool {
 	return e.Title == nil && e.Notes == nil && e.Status == nil && e.Difficulty == nil &&
-		e.Priority == nil && e.Estimate == nil && e.Due == nil && e.RecurKind == nil &&
+		e.Priority == nil && e.Estimate == nil && e.Remaining == nil && e.Due == nil && e.RecurKind == nil &&
 		e.RecurRule == nil && e.MnemoSlug == nil && e.MnemoTitle == nil
 }
 
@@ -362,6 +377,9 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if e.Estimate != nil {
 		t.EstimateMinutes = *e.Estimate
 	}
+	if e.Remaining != nil {
+		t.RemainingMinutes = *e.Remaining
+	}
 	if e.Due != nil {
 		t.Due = *e.Due
 	}
@@ -379,6 +397,15 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	}
 	if err := t.validate(); err != nil {
 		return nil, err
+	}
+	// An occurrence of a recurring task is done in one go, so there is never
+	// anything left of one. Asking for it is a mistake worth saying; a task
+	// that has just become recurring simply drops what it had.
+	if t.Recurring() {
+		if e.Remaining != nil && *e.Remaining > 0 {
+			return nil, fmt.Errorf("a recurring task is done in one go and has nothing left over: %w", ErrInvalid)
+		}
+		t.RemainingMinutes = 0
 	}
 	// A new schedule supersedes the old one's date: "every weekly on mon"
 	// means the coming Monday, not whenever the previous rule had landed.
@@ -400,11 +427,11 @@ func (s *Store) save(t *Task) (*Task, error) {
 	t.UpdatedAt = Now()
 	_, err := s.db.Exec(`UPDATE tasks SET
 		title = ?, notes = ?, status = ?, difficulty = ?, priority = ?, estimate_minutes = ?,
-		due = ?, recur_kind = ?, recur_rule = ?, mnemo_slug = ?, mnemo_title = ?, pinned_on = ?,
-		updated_at = ?, done_at = ?, enriched_at = ?
+		remaining_minutes = ?, due = ?, recur_kind = ?, recur_rule = ?, mnemo_slug = ?, mnemo_title = ?,
+		pinned_on = ?, updated_at = ?, done_at = ?, enriched_at = ?
 		WHERE id = ?`,
 		t.Title, nullStr(t.Notes), string(t.Status), nullStr(string(t.Difficulty)), nullStr(string(t.Priority)),
-		nullInt(t.EstimateMinutes), nullStr(t.Due), nullStr(string(t.RecurKind)), nullStr(t.RecurRule),
+		nullInt(t.EstimateMinutes), nullInt(t.RemainingMinutes), nullStr(t.Due), nullStr(string(t.RecurKind)), nullStr(t.RecurRule),
 		nullStr(t.MnemoSlug), nullStr(t.MnemoTitle), nullStr(t.PinnedOn),
 		stamp(t.UpdatedAt), stampPtr(t.DoneAt), stampPtr(t.EnrichedAt),
 		t.ID)
@@ -464,8 +491,70 @@ func (s *Store) Done(id int64, minutes int) (*Task, error) {
 	return s.Get(id)
 }
 
-// Undo removes the most recent completion and reopens the task, covering the
-// one mistake that actually happens: a wrong tick.
+// Work logs a session on a task without finishing it. left is what is still
+// to do afterwards; nil means what was left less the minutes spent. Time
+// spent is not progress, so the caller can say otherwise, and 0 left is the
+// task finished. A recurring task is done in one go and is refused.
+func (s *Store) Work(id int64, minutes int, left *int) (*Task, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("logging work on task %d: %w", id, err)
+	}
+	defer tx.Rollback()
+
+	t, err := getTx(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if t.Recurring() {
+		return nil, fmt.Errorf("task %d repeats, and an occurrence is done in one go; complete it instead: %w", id, ErrInvalid)
+	}
+	if t.Status != StatusOpen {
+		return nil, fmt.Errorf("task %d is already done: %w", id, ErrInvalid)
+	}
+	if minutes < 0 {
+		return nil, fmt.Errorf("minutes must not be negative: %w", ErrInvalid)
+	}
+	before := t.RemainingMinutes
+	if before == 0 {
+		before = t.EstimateMinutes
+	}
+	var rest int
+	switch {
+	case left != nil:
+		rest = *left
+	case before == 0:
+		return nil, fmt.Errorf("task %d has no estimate to count down from; say how much is left: %w", id, ErrInvalid)
+	default:
+		rest = max(before-minutes, 0)
+	}
+	if rest < 0 {
+		return nil, fmt.Errorf("left must not be negative: %w", ErrInvalid)
+	}
+	if rest == 0 {
+		tx.Rollback()
+		return s.Done(id, minutes)
+	}
+
+	now := Now()
+	if _, err := tx.Exec(`INSERT INTO completions (task_id, done_at, due, minutes, partial, left_minutes, remaining_before)
+		VALUES (?,?,?,?,1,?,?)`,
+		id, stamp(now), nullStr(t.Due), nullInt(minutes), rest, nullInt(t.RemainingMinutes)); err != nil {
+		return nil, fmt.Errorf("logging work on task %d: %w", id, err)
+	}
+	if _, err := tx.Exec(`UPDATE tasks SET remaining_minutes = ?, updated_at = ? WHERE id = ?`,
+		rest, stamp(now), id); err != nil {
+		return nil, fmt.Errorf("logging work on task %d: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("logging work on task %d: %w", id, err)
+	}
+	return s.Get(id)
+}
+
+// Undo removes the most recent thing logged against a task, covering the one
+// mistake that actually happens: a wrong tick. A completion reopens the task;
+// a session of work puts back what was left before it.
 func (s *Store) Undo(id int64) (*Task, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -479,8 +568,11 @@ func (s *Store) Undo(id int64) (*Task, error) {
 	}
 	var completionID int64
 	var completionDue sql.NullString
-	err = tx.QueryRow(`SELECT id, due FROM completions WHERE task_id = ? ORDER BY done_at DESC, id DESC LIMIT 1`, id).
-		Scan(&completionID, &completionDue)
+	var partial bool
+	var remainingBefore sql.NullInt64
+	err = tx.QueryRow(`SELECT id, due, partial, remaining_before FROM completions
+		WHERE task_id = ? ORDER BY done_at DESC, id DESC LIMIT 1`, id).
+		Scan(&completionID, &completionDue, &partial, &remainingBefore)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("task %d has no completion to undo: %w", id, ErrInvalid)
 	}
@@ -490,8 +582,19 @@ func (s *Store) Undo(id int64) (*Task, error) {
 	if _, err := tx.Exec(`DELETE FROM completions WHERE id = ?`, completionID); err != nil {
 		return nil, fmt.Errorf("undoing task %d: %w", id, err)
 	}
+	if partial {
+		if _, err := tx.Exec(`UPDATE tasks SET remaining_minutes = ?, updated_at = ? WHERE id = ?`,
+			nullInt(int(remainingBefore.Int64)), stamp(Now()), id); err != nil {
+			return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		}
+		return s.Get(id)
+	}
 	var previous any
-	if err := tx.QueryRow(`SELECT done_at FROM completions WHERE task_id = ? ORDER BY done_at DESC, id DESC LIMIT 1`, id).
+	if err := tx.QueryRow(`SELECT done_at FROM completions WHERE task_id = ? AND partial = 0
+		ORDER BY done_at DESC, id DESC LIMIT 1`, id).
 		Scan(&previous); err == sql.ErrNoRows {
 		previous = nil
 	} else if err != nil {
@@ -528,16 +631,21 @@ func (s *Store) Delete(id int64) error {
 	return nil
 }
 
+// Completion is one thing logged against a task: finishing it, or a session
+// of work on it that left some to do, in which case Partial is set and Left
+// is what was still to go afterwards.
 type Completion struct {
 	ID      int64
 	TaskID  int64
 	DoneAt  time.Time
 	Due     string
 	Minutes int
+	Partial bool
+	Left    int
 }
 
 func (s *Store) Completions(id int64) ([]Completion, error) {
-	rows, err := s.db.Query(`SELECT id, task_id, done_at, due, minutes FROM completions
+	rows, err := s.db.Query(`SELECT id, task_id, done_at, due, minutes, partial, left_minutes FROM completions
 		WHERE task_id = ? ORDER BY done_at DESC, id DESC`, id)
 	if err != nil {
 		return nil, fmt.Errorf("reading completions for %d: %w", id, err)
@@ -549,13 +657,14 @@ func (s *Store) Completions(id int64) ([]Completion, error) {
 		var c Completion
 		var doneAt string
 		var due sql.NullString
-		var minutes sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.TaskID, &doneAt, &due, &minutes); err != nil {
+		var minutes, left sql.NullInt64
+		if err := rows.Scan(&c.ID, &c.TaskID, &doneAt, &due, &minutes, &c.Partial, &left); err != nil {
 			return nil, fmt.Errorf("reading completions for %d: %w", id, err)
 		}
 		c.DoneAt = parseStamp(doneAt)
 		c.Due = due.String
 		c.Minutes = int(minutes.Int64)
+		c.Left = int(left.Int64)
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -628,6 +737,7 @@ func scanTask(row scanner) (*Task, error) {
 		difficulty sql.NullString
 		priority   sql.NullString
 		estimate   sql.NullInt64
+		remaining  sql.NullInt64
 		due        sql.NullString
 		recurKind  sql.NullString
 		recurRule  sql.NullString
@@ -639,7 +749,7 @@ func scanTask(row scanner) (*Task, error) {
 		doneAt     sql.NullString
 		enrichedAt sql.NullString
 	)
-	if err := row.Scan(&t.ID, &t.Title, &notes, &t.Status, &difficulty, &priority, &estimate, &due,
+	if err := row.Scan(&t.ID, &t.Title, &notes, &t.Status, &difficulty, &priority, &estimate, &remaining, &due,
 		&recurKind, &recurRule, &mnemoSlug, &mnemoTitle, &pinnedOn, &createdAt, &updatedAt, &doneAt, &enrichedAt); err != nil {
 		return nil, err
 	}
@@ -647,6 +757,7 @@ func scanTask(row scanner) (*Task, error) {
 	t.Difficulty = Difficulty(difficulty.String)
 	t.Priority = Priority(priority.String)
 	t.EstimateMinutes = int(estimate.Int64)
+	t.RemainingMinutes = int(remaining.Int64)
 	t.Due = due.String
 	t.RecurKind = RecurKind(recurKind.String)
 	t.RecurRule = recurRule.String

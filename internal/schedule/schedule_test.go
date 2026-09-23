@@ -511,6 +511,7 @@ func TestDeepWorkStartsInsideItsWindow(t *testing.T) {
 func TestDeepWorkTooLongForTheWindowClaimsNothing(t *testing.T) {
 	p := prefs()
 	p.DeepStart, p.DeepEnd = store.Clock{Hour: 8, Minute: 0}, store.Clock{Hour: 9, Minute: 0}
+	p.MaxBlockMinutes = 120
 	plan, err := Plan(Options{
 		Day:   monday,
 		Prefs: p,

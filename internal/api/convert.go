@@ -9,19 +9,20 @@ import (
 
 func FromTask(t *store.Task) Task {
 	out := Task{
-		ID:              t.ID,
-		Title:           t.Title,
-		Notes:           t.Notes,
-		Status:          string(t.Status),
-		Difficulty:      string(t.Difficulty),
-		Priority:        string(t.Priority),
-		EstimateMinutes: t.EstimateMinutes,
-		Due:             t.Due,
-		Overdue:         t.Overdue(),
-		PinnedOn:        t.PinnedOn,
-		CreatedAt:       t.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:       t.UpdatedAt.Format(time.RFC3339),
-		Enriched:        t.EnrichedAt != nil,
+		ID:               t.ID,
+		Title:            t.Title,
+		Notes:            t.Notes,
+		Status:           string(t.Status),
+		Difficulty:       string(t.Difficulty),
+		Priority:         string(t.Priority),
+		EstimateMinutes:  t.EstimateMinutes,
+		RemainingMinutes: t.RemainingMinutes,
+		Due:              t.Due,
+		Overdue:          t.Overdue(),
+		PinnedOn:         t.PinnedOn,
+		CreatedAt:        t.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:        t.UpdatedAt.Format(time.RFC3339),
+		Enriched:         t.EnrichedAt != nil,
 	}
 	if t.Recurring() {
 		out.Recur = &Recur{Kind: string(t.RecurKind), Rule: t.RecurRule}
@@ -49,6 +50,7 @@ func (r EditRequest) Edit() store.Edit {
 	e.Notes = r.Notes
 	e.Due = r.Due
 	e.Estimate = r.EstimateMinutes
+	e.Remaining = r.RemainingMinutes
 	if r.Status != nil {
 		s := store.Status(*r.Status)
 		e.Status = &s
@@ -78,6 +80,7 @@ func FromPreferences(p store.Preferences) Preferences {
 		BufferMinutes:   p.BufferMinutes,
 		MinBlockMinutes: p.MinBlockMinutes,
 		MaxMinutesDay:   p.MaxMinutesDay,
+		MaxBlockMinutes: p.MaxBlockMinutes,
 	}
 }
 
@@ -107,6 +110,7 @@ func (r PreferencesRequest) Apply(p store.Preferences) (store.Preferences, error
 		{r.BufferMinutes, &p.BufferMinutes},
 		{r.MinBlockMinutes, &p.MinBlockMinutes},
 		{r.MaxMinutesDay, &p.MaxMinutesDay},
+		{r.MaxBlockMinutes, &p.MaxBlockMinutes},
 	} {
 		if f.value != nil {
 			*f.into = *f.value
@@ -118,7 +122,7 @@ func (r PreferencesRequest) Apply(p store.Preferences) (store.Preferences, error
 // Empty reports whether the request would change nothing.
 func (r PreferencesRequest) Empty() bool {
 	return r.DayStart == nil && r.DayEnd == nil && r.DeepStart == nil && r.DeepEnd == nil && r.BufferMinutes == nil &&
-		r.MinBlockMinutes == nil && r.MaxMinutesDay == nil
+		r.MinBlockMinutes == nil && r.MaxMinutesDay == nil && r.MaxBlockMinutes == nil
 }
 
 func FromDay(d schedule.Day, hasCalendar bool, calErr string) TodayResponse {
@@ -136,6 +140,7 @@ func FromDay(d schedule.Day, hasCalendar bool, calErr string) TodayResponse {
 			Start:   clock(b.Start),
 			End:     clock(b.End),
 			Minutes: b.Minutes,
+			Left:    b.Left,
 			Reason:  b.Reason,
 		})
 	}

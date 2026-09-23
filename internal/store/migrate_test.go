@@ -155,7 +155,7 @@ func TestDroppingWorkKeepsTheRestOfTheDay(t *testing.T) {
 	want := Preferences{
 		DayStart: Clock{8, 30}, DayEnd: Clock{23, 59},
 		DeepStart: Clock{22, 0}, DeepEnd: Clock{23, 59},
-		BufferMinutes: 5, MinBlockMinutes: 20, MaxMinutesDay: 300,
+		BufferMinutes: 5, MinBlockMinutes: 20, MaxMinutesDay: 300, MaxBlockMinutes: 60,
 	}
 	if got != want {
 		t.Fatalf("preferences = %+v, want %+v", got, want)

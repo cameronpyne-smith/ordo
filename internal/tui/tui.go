@@ -6,6 +6,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -38,6 +39,7 @@ const (
 	modeEdit
 	modeField
 	modeTook
+	modeLeft
 	modeNotes
 )
 
@@ -93,6 +95,8 @@ type Model struct {
 
 	took     api.Task
 	tookFrom mode
+	working  bool
+	worked   int
 
 	message string
 	failure string
@@ -289,6 +293,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyField(msg)
 	case modeTook:
 		return m.keyTook(msg)
+	case modeLeft:
+		return m.keyLeft(msg)
 	case modeNotes:
 		return m.keyNotes(msg)
 	case modeHelp:
@@ -324,10 +330,19 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.askTook(t, modeList)
+	case "w":
+		t, ok := m.selected()
+		if !ok {
+			return m, nil
+		}
+		return m.askWorked(t, 0, modeList)
 	case "u":
 		return m.act(func(c *client.Client, id int64) (string, error) {
-			_, err := c.Undo(id)
-			return "completion removed", err
+			t, err := c.Undo(id)
+			if err == nil && t.RemainingMinutes > 0 {
+				return fmt.Sprintf("undone — %d left", t.RemainingMinutes), nil
+			}
+			return "undone", err
 		})
 	case "e":
 		return m.act(func(c *client.Client, id int64) (string, error) {

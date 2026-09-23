@@ -96,6 +96,11 @@ func (c *Client) Done(id int64, minutes int) (*api.Task, error) {
 	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/done", api.DoneRequest{Minutes: minutes}, &resp)
 }
 
+func (c *Client) Work(id int64, minutes int, left *int) (*api.Task, error) {
+	var resp api.Task
+	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/work", api.WorkRequest{Minutes: minutes, Left: left}, &resp)
+}
+
 func (c *Client) Undo(id int64) (*api.Task, error) {
 	var resp api.Task
 	return &resp, c.do(http.MethodPost, "/tasks/"+strconv.FormatInt(id, 10)+"/undo", nil, &resp)

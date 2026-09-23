@@ -24,6 +24,10 @@ type Preferences struct {
 	BufferMinutes   int
 	MinBlockMinutes int
 	MaxMinutesDay   int
+	// MaxBlockMinutes is one sitting. A one-off task with more left than
+	// this is worked on a piece a day rather than waiting for a gap it could
+	// never get.
+	MaxBlockMinutes int
 }
 
 // DefaultPreferences is a waking day with deep work at the start of it, the
@@ -37,6 +41,7 @@ func DefaultPreferences() Preferences {
 		BufferMinutes:   10,
 		MinBlockMinutes: 15,
 		MaxMinutesDay:   240,
+		MaxBlockMinutes: 60,
 	}
 }
 
@@ -90,6 +95,7 @@ func (p *Preferences) validate() error {
 		{"buffer_minutes", p.BufferMinutes},
 		{"min_block_minutes", p.MinBlockMinutes},
 		{"max_minutes_per_day", p.MaxMinutesDay},
+		{"max_block_minutes", p.MaxBlockMinutes},
 	} {
 		if f.value < 0 {
 			return fmt.Errorf("%s must not be negative: %w", f.name, ErrInvalid)
@@ -101,11 +107,14 @@ func (p *Preferences) validate() error {
 	if p.MaxMinutesDay == 0 {
 		return fmt.Errorf("max_minutes_per_day must be at least 1: %w", ErrInvalid)
 	}
+	if p.MaxBlockMinutes == 0 {
+		return fmt.Errorf("max_block_minutes must be at least 1: %w", ErrInvalid)
+	}
 	return nil
 }
 
 const prefColumns = `day_start, day_end, deep_start, deep_end,
-	buffer_minutes, min_block_minutes, max_minutes_day`
+	buffer_minutes, min_block_minutes, max_minutes_day, max_block_minutes`
 
 // Preferences reads the single row, falling back to the defaults when the
 // database has never been written to. A fresh install schedules sensibly
@@ -115,7 +124,7 @@ func (s *Store) Preferences() (Preferences, error) {
 	p := DefaultPreferences()
 	err := s.db.QueryRow(`SELECT `+prefColumns+` FROM preferences WHERE id = 1`).Scan(
 		&dayStart, &dayEnd, &deepStart, &deepEnd,
-		&p.BufferMinutes, &p.MinBlockMinutes, &p.MaxMinutesDay)
+		&p.BufferMinutes, &p.MinBlockMinutes, &p.MaxMinutesDay, &p.MaxBlockMinutes)
 	if err == sql.ErrNoRows {
 		return DefaultPreferences(), nil
 	}
@@ -146,15 +155,16 @@ func (s *Store) SetPreferences(p Preferences) (Preferences, error) {
 		return p, err
 	}
 	_, err := s.db.Exec(`INSERT INTO preferences (id, `+prefColumns+`)
-		VALUES (1,?,?,?,?,?,?,?)
+		VALUES (1,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			day_start=excluded.day_start, day_end=excluded.day_end,
 			deep_start=excluded.deep_start, deep_end=excluded.deep_end,
 			buffer_minutes=excluded.buffer_minutes,
 			min_block_minutes=excluded.min_block_minutes,
-			max_minutes_day=excluded.max_minutes_day`,
+			max_minutes_day=excluded.max_minutes_day,
+			max_block_minutes=excluded.max_block_minutes`,
 		p.DayStart.String(), p.DayEnd.String(), p.DeepStart.String(), p.DeepEnd.String(),
-		p.BufferMinutes, p.MinBlockMinutes, p.MaxMinutesDay)
+		p.BufferMinutes, p.MinBlockMinutes, p.MaxMinutesDay, p.MaxBlockMinutes)
 	if err != nil {
 		return p, fmt.Errorf("saving preferences: %w", err)
 	}

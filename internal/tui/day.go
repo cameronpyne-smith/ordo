@@ -94,6 +94,13 @@ func (m Model) keyDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.askTook(t, modeDay)
+	case "w":
+		entries := dayEntries(m.day)
+		if m.dayCursor >= len(entries) || entries[m.dayCursor].block == nil {
+			return m, nil
+		}
+		b := entries[m.dayCursor].block
+		return m.askWorked(b.Task, b.Minutes, modeDay)
 	case "enter":
 		t, ok := m.dayCursorTask()
 		if !ok {
@@ -224,7 +231,11 @@ func (m Model) dayRow(e entry, selected bool, width int) string {
 	if e.pinned {
 		title = "* " + title
 	}
-	suffix := faintStyle.Render(fmt.Sprintf("  %d min", e.block.Minutes))
+	length := fmt.Sprintf("  %d min", e.block.Minutes)
+	if e.block.Left > 0 {
+		length += fmt.Sprintf(" of %d left", e.block.Left)
+	}
+	suffix := faintStyle.Render(length)
 	prefix := marker + span + " "
 	room := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
 	line := prefix + truncate(title, max(room, 12))
@@ -250,7 +261,7 @@ func (m Model) dayDetail(width int) string {
 }
 
 func (m Model) dayFooter(width int) string {
-	if m.mode == modeTook {
+	if m.mode == modeTook || m.mode == modeLeft {
 		return m.tookFooter(width)
 	}
 	status := m.message
@@ -260,7 +271,7 @@ func (m Model) dayFooter(width int) string {
 	if status == "" && m.day != nil {
 		status = faintStyle.Render(dayNote(m.day))
 	}
-	keys := faintStyle.Render("j k move · enter open · d done · p unpin · r refresh · t list · ? help · q quit")
+	keys := faintStyle.Render("j k move · enter open · d done · w worked · p unpin · r refresh · t list · ? help · q quit")
 	return rule(width) + "\n" + pad(keys, status, width)
 }
 

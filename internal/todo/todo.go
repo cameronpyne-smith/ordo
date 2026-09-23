@@ -166,6 +166,16 @@ func (s *Service) Done(id int64, minutes int) (api.Task, error) {
 	return api.FromTask(t), nil
 }
 
+// Work logs a session on a task that leaves some of it still to do.
+func (s *Service) Work(id int64, minutes int, left *int) (api.Task, error) {
+	t, err := s.store.Work(id, minutes, left)
+	if err != nil {
+		return api.Task{}, err
+	}
+	s.changed()
+	return api.FromTask(t), nil
+}
+
 func (s *Service) Undo(id int64) (api.Task, error) {
 	t, err := s.store.Undo(id)
 	if err != nil {

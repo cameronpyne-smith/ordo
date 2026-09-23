@@ -29,7 +29,7 @@ func (m Model) View() string {
 		return m.help()
 	}
 	width, height := m.size()
-	if m.mode == modeDay || m.mode == modeTook && m.tookFrom == modeDay {
+	if m.mode == modeDay || (m.mode == modeTook || m.mode == modeLeft) && m.tookFrom == modeDay {
 		return m.dayView(width, height)
 	}
 	if m.mode == modeEdit || m.mode == modeField {
@@ -246,7 +246,7 @@ func (m Model) footer(width int) string {
 	switch m.mode {
 	case modeAdd:
 		return rule(width) + "\n" + "add: " + m.input.View()
-	case modeTook:
+	case modeTook, modeLeft:
 		return m.tookFooter(width)
 	case modeConfirm:
 		return rule(width) + "\n" + errorStyle.Render(fmt.Sprintf("delete %d permanently? this cannot be undone  y/n", m.confirm))
@@ -266,7 +266,7 @@ func (m Model) footer(width int) string {
 		status = errorStyle.Render(m.failure)
 	}
 	return rule(width) + "\n" + truncate(strings.Join(keys, "  "), width) + "\n" +
-		pad(faintStyle.Render("enter open · a add · d done · u undo · e enrich · l note · p pin · t today · x delete · q quit"), status, width)
+		pad(faintStyle.Render("enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit"), status, width)
 }
 
 func (m Model) help() string {
@@ -287,15 +287,20 @@ func (m Model) help() string {
 		"  d   done — asks how long it took, filled in with the estimate: enter",
 		"      keeps it, or type the real minutes, or clear it if you do not know.",
 		"      esc backs out. A recurring task stays open and moves to its next date",
-		"  u   undo the last completion",
+		"  w   worked on it, not finished — asks how long, then how much is left,",
+		"      filled in with what was left less that. The day plans what is left,",
+		"      a piece a day when it is more than one sitting. 0 left finishes it",
+		"  u   undo the last completion or session",
 		"  e   read it with the model again; it only ever fills empty fields",
 		"  x   delete permanently, after a confirmation",
 		"",
 		headingStyle.Render("changing a task"),
 		"  enter opens the task. Inside it p and d cycle priority and difficulty,",
-		"  shift steps back, and u m r t open a prefilled line for the due date,",
-		"  estimate, repeat rule and title. A date is day first, 25/09/26, or",
-		"  2026-09-25. Every press saves; an empty value clears the field.",
+		"  shift steps back, and u m l r t open a prefilled line for the due date,",
+		"  estimate, what is left, repeat rule and title. A date is day first,",
+		"  25/09/26, or 2026-09-25. Every press saves; an empty value clears the",
+		"  field. The estimate stays the first guess once work has started; left",
+		"  is what the plan uses, and clearing it goes back to the estimate.",
 		"  A note too long for its row is shown whole underneath, j k to scroll.",
 		"  n edits it over several lines: enter starts a new line, ctrl+s saves.",
 		"  esc returns to the list.",

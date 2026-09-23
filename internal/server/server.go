@@ -53,6 +53,7 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("GET /tasks/{id}", s.handleGet)
 	mux.HandleFunc("POST /tasks/{id}/edit", s.handleEdit)
 	mux.HandleFunc("POST /tasks/{id}/done", s.handleDone)
+	mux.HandleFunc("POST /tasks/{id}/work", s.handleWork)
 	mux.HandleFunc("POST /tasks/{id}/undo", s.handleUndo)
 	mux.HandleFunc("POST /tasks/{id}/enrich", s.handleEnrich)
 	mux.HandleFunc("POST /tasks/{id}/link", s.handleLink)
@@ -215,6 +216,25 @@ func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := s.todo.Done(id, req.Minutes)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, t)
+}
+
+func (s *Server) handleWork(w http.ResponseWriter, r *http.Request) {
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req api.WorkRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	t, err := s.todo.Work(id, req.Minutes, req.Left)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return

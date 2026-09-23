@@ -33,16 +33,17 @@ type AddArgs struct {
 }
 
 type SetArgs struct {
-	ID              int64   `json:"id" jsonschema:"the task id"`
-	Title           *string `json:"title,omitempty" jsonschema:"a new title; this re-runs inference over the new sentence"`
-	Notes           *string `json:"notes,omitempty" jsonschema:"replacement detail line, or empty to clear"`
-	Status          *string `json:"status,omitempty" jsonschema:"open or done; prefer todo_done, which also handles recurrence"`
-	Difficulty      *string `json:"difficulty,omitempty" jsonschema:"low, medium or high, or empty to clear"`
-	Priority        *string `json:"priority,omitempty" jsonschema:"low, normal or high, or empty to clear"`
-	EstimateMinutes *int    `json:"estimate_minutes,omitempty" jsonschema:"how long it will take in minutes; 0 clears it"`
-	Due             *string `json:"due,omitempty" jsonschema:"YYYY-MM-DD, or empty to clear the due date"`
-	RecurKind       *string `json:"recur_kind,omitempty" jsonschema:"every or after, or empty to stop it repeating"`
-	RecurRule       *string `json:"recur_rule,omitempty" jsonschema:"the rule text for the kind"`
+	ID               int64   `json:"id" jsonschema:"the task id"`
+	Title            *string `json:"title,omitempty" jsonschema:"a new title; this re-runs inference over the new sentence"`
+	Notes            *string `json:"notes,omitempty" jsonschema:"replacement detail line, or empty to clear"`
+	Status           *string `json:"status,omitempty" jsonschema:"open or done; prefer todo_done, which also handles recurrence"`
+	Difficulty       *string `json:"difficulty,omitempty" jsonschema:"low, medium or high, or empty to clear"`
+	Priority         *string `json:"priority,omitempty" jsonschema:"low, normal or high, or empty to clear"`
+	EstimateMinutes  *int    `json:"estimate_minutes,omitempty" jsonschema:"how long it will take in minutes; 0 clears it. Once work has started this stays the first guess and remaining_minutes is what the plan uses"`
+	RemainingMinutes *int    `json:"remaining_minutes,omitempty" jsonschema:"how much is left of a task already started, in minutes: a re-estimate part way through. 0 puts it back to the whole estimate"`
+	Due              *string `json:"due,omitempty" jsonschema:"YYYY-MM-DD, or empty to clear the due date"`
+	RecurKind        *string `json:"recur_kind,omitempty" jsonschema:"every or after, or empty to stop it repeating"`
+	RecurRule        *string `json:"recur_rule,omitempty" jsonschema:"the rule text for the kind"`
 }
 
 type IDArgs struct {
@@ -52,6 +53,12 @@ type IDArgs struct {
 type DoneArgs struct {
 	ID      int64 `json:"id" jsonschema:"the task id"`
 	Minutes int   `json:"minutes,omitempty" jsonschema:"how long it actually took, in minutes, if known"`
+}
+
+type WorkArgs struct {
+	ID      int64 `json:"id" jsonschema:"the task id"`
+	Minutes int   `json:"minutes,omitempty" jsonschema:"how long the session took, in minutes, if known"`
+	Left    *int  `json:"left,omitempty" jsonschema:"how much is still to do afterwards, in minutes, when it is not simply what was left less minutes; 0 finishes the task"`
 }
 
 type LinkArgs struct {
@@ -95,21 +102,27 @@ func (t *toolServer) add(ctx context.Context, _ *sdk.CallToolRequest, args AddAr
 
 func (t *toolServer) set(_ context.Context, _ *sdk.CallToolRequest, args SetArgs) (*sdk.CallToolResult, api.Task, error) {
 	task, err := t.todo.Edit(args.ID, api.EditRequest{
-		Title:           args.Title,
-		Notes:           args.Notes,
-		Status:          args.Status,
-		Difficulty:      args.Difficulty,
-		Priority:        args.Priority,
-		EstimateMinutes: args.EstimateMinutes,
-		Due:             args.Due,
-		RecurKind:       args.RecurKind,
-		RecurRule:       args.RecurRule,
+		Title:            args.Title,
+		Notes:            args.Notes,
+		Status:           args.Status,
+		Difficulty:       args.Difficulty,
+		Priority:         args.Priority,
+		EstimateMinutes:  args.EstimateMinutes,
+		RemainingMinutes: args.RemainingMinutes,
+		Due:              args.Due,
+		RecurKind:        args.RecurKind,
+		RecurRule:        args.RecurRule,
 	})
 	return nil, task, err
 }
 
 func (t *toolServer) done(_ context.Context, _ *sdk.CallToolRequest, args DoneArgs) (*sdk.CallToolResult, api.Task, error) {
 	task, err := t.todo.Done(args.ID, args.Minutes)
+	return nil, task, err
+}
+
+func (t *toolServer) work(_ context.Context, _ *sdk.CallToolRequest, args WorkArgs) (*sdk.CallToolResult, api.Task, error) {
+	task, err := t.todo.Work(args.ID, args.Minutes, args.Left)
 	return nil, task, err
 }
 
@@ -163,6 +176,7 @@ type PrefsArgs struct {
 	BufferMinutes   *int    `json:"buffer_minutes,omitempty" jsonschema:"minutes left between consecutive blocks"`
 	MinBlockMinutes *int    `json:"min_block_minutes,omitempty" jsonschema:"the shortest stretch worth scheduling into"`
 	MaxMinutesDay   *int    `json:"max_minutes_per_day,omitempty" jsonschema:"the most minutes of tasks to plan in one day"`
+	MaxBlockMinutes *int    `json:"max_block_minutes,omitempty" jsonschema:"one sitting: a one-off task with more left than this is planned a piece a day"`
 }
 
 func (t *toolServer) today(ctx context.Context, _ *sdk.CallToolRequest, args TodayArgs) (*sdk.CallToolResult, api.TodayResponse, error) {
@@ -188,6 +202,7 @@ func (t *toolServer) prefs(_ context.Context, _ *sdk.CallToolRequest, args Prefs
 		BufferMinutes:   args.BufferMinutes,
 		MinBlockMinutes: args.MinBlockMinutes,
 		MaxMinutesDay:   args.MaxMinutesDay,
+		MaxBlockMinutes: args.MaxBlockMinutes,
 	}
 	// An empty call is a read, which is what a model wants first anyway:
 	// see the day before changing it.

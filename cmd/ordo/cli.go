@@ -137,12 +137,54 @@ func newDoneCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
+func newWorkCmd(configPath *string) *cobra.Command {
+	var left int
+
+	cmd := &cobra.Command{
+		Use:   "work <id> <minutes>",
+		Short: "Log a session on a task that leaves some of it still to do",
+		Long: "Log a session on a task without finishing it. What is left becomes what was left\n" +
+			"less the minutes, unless --left says otherwise; --left 0 finishes the task.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			minutes, err := parseMinutes(args[1])
+			if err != nil {
+				return err
+			}
+			var rest *int
+			if cmd.Flags().Changed("left") {
+				rest = &left
+			}
+			c, err := newClient(*configPath)
+			if err != nil {
+				return err
+			}
+			t, err := c.Work(id, minutes, rest)
+			if err != nil {
+				return err
+			}
+			if t.Status == string(store.StatusDone) {
+				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s\n", t.ID, t.Title)
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "logged %d: %s (%s left)\n", t.ID, t.Title, minutesText(t.RemainingMinutes))
+			return nil
+		},
+	}
+	cmd.Flags().IntVar(&left, "left", 0, "minutes still to do afterwards, when it is not simply what was left less these")
+	return cmd
+}
+
 func newSetCmd(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <id> <key=value>...",
 		Short: "Change fields on a task; an empty value clears one",
 		Long: "Change fields on a task. Keys: title, notes, status, difficulty, priority, due,\n" +
-			"estimate, every, after.\n" +
+			"estimate, left, every, after. left is what remains of a task already started.\n" +
 			"An empty value clears the field, for example due= or every=.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -171,7 +213,7 @@ func newSetCmd(configPath *string) *cobra.Command {
 func newUndoCmd(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "undo <id>",
-		Short: "Remove the most recent completion and reopen a task",
+		Short: "Take back the most recent completion or session on a task",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -186,7 +228,11 @@ func newUndoCmd(configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "reopened %d: %s\n", t.ID, t.Title)
+			if t.RemainingMinutes > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "undone %d: %s (%s left)\n", t.ID, t.Title, minutesText(t.RemainingMinutes))
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "undone %d: %s\n", t.ID, t.Title)
 			return nil
 		},
 	}
@@ -357,8 +403,18 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 				minutes = parsed
 			}
 			req.EstimateMinutes = &minutes
+		case "left", "remaining", "remaining_minutes":
+			minutes := 0
+			if value != "" {
+				parsed, err := strconv.Atoi(value)
+				if err != nil {
+					return req, fmt.Errorf("left %q must be a number of minutes", value)
+				}
+				minutes = parsed
+			}
+			req.RemainingMinutes = &minutes
 		default:
-			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due, estimate, every or after", key)
+			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due, estimate, left, every or after", key)
 		}
 	}
 	return req, nil

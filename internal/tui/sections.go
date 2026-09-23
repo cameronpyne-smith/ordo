@@ -74,16 +74,21 @@ func why(t api.Task) string {
 	if t.Priority != "" && t.Priority != "normal" {
 		parts = append(parts, t.Priority+" priority")
 	}
-	switch {
-	case store.QuickWin(store.Difficulty(t.Difficulty), t.EstimateMinutes):
-		parts = append(parts, "low difficulty, so a quick win")
-	case t.Difficulty != "":
+	if t.Difficulty != "" {
 		parts = append(parts, t.Difficulty+" difficulty")
+	}
+	if store.QuickWin(store.Difficulty(t.Difficulty), t.EstimateMinutes, t.RemainingMinutes) {
+		parts = append(parts, "a quick win")
 	}
 	if t.Recur != nil {
 		parts = append(parts, "repeats "+recurPhrase(*t.Recur))
 	}
-	if t.EstimateMinutes > 0 {
+	switch {
+	case t.EstimateMinutes > 0 && t.RemainingMinutes > 0:
+		parts = append(parts, fmt.Sprintf("about %d min, %d left", t.EstimateMinutes, t.RemainingMinutes))
+	case t.RemainingMinutes > 0:
+		parts = append(parts, fmt.Sprintf("%d min left", t.RemainingMinutes))
+	case t.EstimateMinutes > 0:
 		parts = append(parts, fmt.Sprintf("about %d min", t.EstimateMinutes))
 	}
 	if !t.Enriched {
