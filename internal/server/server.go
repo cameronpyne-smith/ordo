@@ -140,6 +140,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		Linked:     q.Get("linked") == "true",
 		Note:       q.Get("note"),
 		Recurring:  q.Get("recurring") == "true",
+		Quick:      q.Get("quick") == "true",
 	}
 	if f.All {
 		f.Status = ""

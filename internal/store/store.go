@@ -213,6 +213,7 @@ type Filter struct {
 	Linked     bool
 	Note       string
 	Recurring  bool
+	Quick      bool
 	Limit      int
 }
 
@@ -257,6 +258,10 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 	}
 	if f.Recurring {
 		where = append(where, "recur_kind IS NOT NULL")
+	}
+	if f.Quick {
+		where = append(where, "difficulty = ? AND (estimate_minutes IS NULL OR estimate_minutes <= ?)")
+		args = append(args, string(DifficultyLow), QuickWinMinutes)
 	}
 
 	query := `SELECT ` + taskColumns + ` FROM tasks`

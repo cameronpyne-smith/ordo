@@ -247,6 +247,7 @@ func TestListFilters(t *testing.T) {
 	st := open(t)
 	overdue := create(t, st, &Task{Title: "Overdue", Due: "2026-09-01"})
 	quick := create(t, st, &Task{Title: "Quick", Difficulty: DifficultyLow})
+	long := create(t, st, &Task{Title: "Easy but long", Difficulty: DifficultyLow, EstimateMinutes: 120})
 	high := create(t, st, &Task{Title: "Important", Priority: PriorityHigh})
 	unset := create(t, st, &Task{Title: "Unset priority"})
 
@@ -257,8 +258,9 @@ func TestListFilters(t *testing.T) {
 	}{
 		{"overdue", Filter{Overdue: true}, []int64{overdue.ID}},
 		{"high priority", Filter{Priority: PriorityHigh}, []int64{high.ID}},
-		{"low difficulty", Filter{Difficulty: DifficultyLow}, []int64{quick.ID}},
-		{"normal includes unset", Filter{Priority: PriorityNormal}, []int64{overdue.ID, quick.ID, unset.ID}},
+		{"low difficulty", Filter{Difficulty: DifficultyLow}, []int64{quick.ID, long.ID}},
+		{"quick wins are easy and short", Filter{Quick: true}, []int64{quick.ID}},
+		{"normal includes unset", Filter{Priority: PriorityNormal}, []int64{overdue.ID, quick.ID, long.ID, unset.ID}},
 		{"limit", Filter{Limit: 1}, []int64{overdue.ID}},
 	}
 	for _, tc := range cases {

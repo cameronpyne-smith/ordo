@@ -55,6 +55,16 @@ const (
 	DifficultyHigh   Difficulty = "high"
 )
 
+// QuickWinMinutes is the longest a quick win can take. Difficulty alone
+// cannot say it: an easy job that fills an evening is not a quick win.
+const QuickWinMinutes = 30
+
+// QuickWin is low difficulty and short. An unset estimate counts as short,
+// since the scheduler takes low difficulty to mean a quarter of an hour.
+func QuickWin(d Difficulty, estimate int) bool {
+	return d == DifficultyLow && estimate <= QuickWinMinutes
+}
+
 // Priority is empty until the user or the model sets one; views treat empty
 // as normal.
 type Priority string

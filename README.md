@@ -87,7 +87,7 @@ ordo backup                      # on the box; serve also snapshots nightly
 ```
 
 Listing order is fixed and explainable from the fields: overdue first, then by
-due date with undated last, then priority, then difficulty so quick wins float
+due date with undated last, then priority, then difficulty so easy work floats
 within a tier, then oldest first. No ordering an LLM produced is ever stored.
 
 ## Recurring tasks

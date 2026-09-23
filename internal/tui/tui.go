@@ -48,7 +48,7 @@ type namedFilter struct {
 var filters = []namedFilter{
 	{"1", "open", client.Filter{}},
 	{"2", "overdue", client.Filter{Overdue: true}},
-	{"3", "quick wins", client.Filter{Difficulty: "low"}},
+	{"3", "quick wins", client.Filter{Quick: true}},
 	{"4", "high priority", client.Filter{Priority: "high"}},
 	{"5", "linked", client.Filter{Linked: true}},
 	{"6", "recurring", client.Filter{Recurring: true}},

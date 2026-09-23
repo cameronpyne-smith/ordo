@@ -74,10 +74,10 @@ func why(t api.Task) string {
 	if t.Priority != "" && t.Priority != "normal" {
 		parts = append(parts, t.Priority+" priority")
 	}
-	switch t.Difficulty {
-	case "low":
+	switch {
+	case store.QuickWin(store.Difficulty(t.Difficulty), t.EstimateMinutes):
 		parts = append(parts, "low difficulty, so a quick win")
-	case "medium", "high":
+	case t.Difficulty != "":
 		parts = append(parts, t.Difficulty+" difficulty")
 	}
 	if t.Recur != nil {

@@ -32,6 +32,7 @@ type Filter struct {
 	Linked     bool
 	Note       string
 	Recurring  bool
+	Quick      bool
 	Limit      int
 }
 
@@ -57,6 +58,9 @@ func (f Filter) query() string {
 	}
 	if f.Recurring {
 		q.Set("recurring", "true")
+	}
+	if f.Quick {
+		q.Set("quick", "true")
 	}
 	if f.Limit > 0 {
 		q.Set("limit", strconv.Itoa(f.Limit))

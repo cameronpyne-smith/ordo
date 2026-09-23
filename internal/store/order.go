@@ -3,8 +3,8 @@ package store
 import "sort"
 
 // Sort applies the one ordering the app has: overdue first; then due
-// ascending with undated last; then priority; then difficulty, so quick wins
-// float within a tier; then oldest first. Every position is explainable from
+// ascending with undated last; then priority; then difficulty, so easy work
+// floats within a tier; then oldest first. Every position is explainable from
 // the fields that produced it, and nothing an LLM decides is persisted here.
 func Sort(tasks []*Task) {
 	sort.SliceStable(tasks, func(i, j int) bool { return less(tasks[i], tasks[j]) })

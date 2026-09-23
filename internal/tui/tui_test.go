@@ -177,6 +177,14 @@ func TestWhyNamesTheFieldsThatPlacedIt(t *testing.T) {
 			t.Errorf("why = %q", got)
 		}
 	})
+	t.Run("easy but long", func(t *testing.T) {
+		got := why(task(4, "office", func(x *api.Task) {
+			x.Difficulty, x.EstimateMinutes = "low", 120
+		}))
+		if strings.Contains(got, "quick win") || !strings.Contains(got, "low difficulty") {
+			t.Errorf("why = %q, want low difficulty without calling two hours a quick win", got)
+		}
+	})
 	t.Run("recurring and unread", func(t *testing.T) {
 		got := why(task(3, "bins", due(day(1)), func(x *api.Task) {
 			x.Recur = &api.Recur{Kind: "every", Rule: "weekly on tue"}
