@@ -174,6 +174,31 @@ func TestPlanIgnoresAPinForAnotherDay(t *testing.T) {
 	}
 }
 
+// A pin to a day that went by without the task being done must not hide it
+// from every day after: it goes back to its place in the order, unpinned.
+func TestPlanTakesBackATaskWhosePinnedDayHasGone(t *testing.T) {
+	plan, err := Plan(Options{
+		Day:   monday,
+		Prefs: prefs(),
+		Tasks: []*store.Task{
+			task(1, "first on the list", est(30)),
+			task(2, "meant for last friday", pinnedTo("2026-09-18"), est(30)),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Blocks) != 2 {
+		t.Fatalf("blocks = %d, want the task pinned to a past day planned too", len(plan.Blocks))
+	}
+	if plan.Blocks[0].Task.ID != 1 {
+		t.Errorf("first block is %d, want a spent pin not to jump the order", plan.Blocks[0].Task.ID)
+	}
+	if strings.Contains(plan.Blocks[1].Reason, "pinned") {
+		t.Errorf("reason = %q, want no claim that it is pinned to this day", plan.Blocks[1].Reason)
+	}
+}
+
 // A task dated in the future belongs on that day, not brought forward into
 // this one; an undated task may fill any space.
 func TestPlanHoldsFutureDatedTasksBack(t *testing.T) {

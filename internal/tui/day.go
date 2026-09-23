@@ -46,7 +46,7 @@ func dayEntries(plan *api.TodayResponse) []entry {
 	var out []entry
 	for i := range plan.Blocks {
 		b := &plan.Blocks[i]
-		out = append(out, entry{start: b.Start, end: b.End, block: b, pinned: b.Task.PinnedOn != ""})
+		out = append(out, entry{start: b.Start, end: b.End, block: b, pinned: b.Task.PinnedOn == plan.Date})
 	}
 	for i := range plan.Busy {
 		b := &plan.Busy[i]

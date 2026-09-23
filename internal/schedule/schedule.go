@@ -169,7 +169,10 @@ func Plan(o Options) (Day, error) {
 // candidates are the tasks eligible for this day, in the daemon's order with
 // pins lifted to the front. A task dated in the future waits for its own day;
 // an undated one may fill space on any day, which is what "someday" means in
-// practice.
+// practice. A pin to a later day holds the task back for that day. A pin to
+// a day that has gone is spent: the task was not done on the day it was
+// meant for, so it goes back to its place in the order rather than
+// vanishing from every plan after it.
 func candidates(day string, tasks []*store.Task) []*store.Task {
 	var pinned, rest []*store.Task
 	for _, t := range tasks {
@@ -179,8 +182,8 @@ func candidates(day string, tasks []*store.Task) []*store.Task {
 		switch {
 		case t.PinnedFor(day):
 			pinned = append(pinned, t)
-		case t.PinnedOn != "":
-			// Pinned to some other day; it belongs there, not here.
+		case t.PinnedOn > day:
+			// Pinned to a later day; it belongs there, not here.
 		case t.Due == "" || t.Due <= day:
 			rest = append(rest, t)
 		}
