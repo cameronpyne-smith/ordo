@@ -102,20 +102,113 @@ type Task struct {
 	// with what it really took.
 	RemainingMinutes int
 	Due              string
-	RecurKind        RecurKind
-	RecurRule        string
-	MnemoSlug        string
-	MnemoTitle       string
-	PinnedOn         string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	DoneAt           *time.Time
-	EnrichedAt       *time.Time
+	// Start holds a one-off task back from the plan until that day. The due
+	// date stays the deadline.
+	Start      string
+	RecurKind  RecurKind
+	RecurRule  string
+	MnemoSlug  string
+	MnemoTitle string
+	PinnedOn   string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	DoneAt     *time.Time
+	EnrichedAt *time.Time
+
+	// BlockedBy and Blocks are the task's dependencies either way round, and
+	// EffectiveDue is the deadline it has once the tasks waiting on it have
+	// passed theirs down, with DueFor the one that set it. All are read
+	// alongside the task and never written through it; BlockedBy is written
+	// only on Create, by ID.
+	BlockedBy    []Dep
+	Blocks       []Dep
+	EffectiveDue string
+	DueFor       int64
 }
 
-// Overdue reports whether an open task's due date has passed.
+// Dep is one end of a dependency, named so a view can say what is being
+// waited on without looking it up.
+type Dep struct {
+	ID    int64
+	Title string
+	Done  bool
+}
+
+// Deadline is the date the task has to be done by: its own due date, or an
+// earlier one passed down from a task waiting on it.
+func (t *Task) Deadline() string {
+	if t.EffectiveDue != "" {
+		return t.EffectiveDue
+	}
+	return t.Due
+}
+
+// Overdue reports whether an open task's deadline has passed.
 func (t *Task) Overdue() bool {
-	return t.Status == StatusOpen && t.Due != "" && t.Due < Today()
+	return t.Status == StatusOpen && t.Deadline() != "" && t.Deadline() < Today()
+}
+
+// Blocked reports whether anything this task waits on is still open.
+func (t *Task) Blocked() bool {
+	for _, d := range t.BlockedBy {
+		if !d.Done {
+			return true
+		}
+	}
+	return false
+}
+
+// Waiting reports whether the task cannot be worked on the given day: it is
+// blocked, or it has not started yet.
+func (t *Task) Waiting(day string) bool {
+	return t.Blocked() || t.Start > day
+}
+
+// WaitingOn is what still holds the task up, in the order it was read.
+func (t *Task) WaitingOn() []Dep {
+	var out []Dep
+	for _, d := range t.BlockedBy {
+		if !d.Done {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// Estimates for a task the model has not measured, by difficulty. These are
+// the numbers completion history is meant to replace once there is enough of
+// it; until then they are a stated guess rather than a hidden one.
+const (
+	EstimateLow     = 15
+	EstimateMedium  = 45
+	EstimateHigh    = 90
+	EstimateUnknown = 30
+)
+
+// Minutes is how long a task is taken to need: its estimate, or a guess from
+// its difficulty.
+func (t *Task) Minutes() int {
+	if t.EstimateMinutes > 0 {
+		return t.EstimateMinutes
+	}
+	switch t.Difficulty {
+	case DifficultyLow:
+		return EstimateLow
+	case DifficultyMedium:
+		return EstimateMedium
+	case DifficultyHigh:
+		return EstimateHigh
+	}
+	return EstimateUnknown
+}
+
+// Left is how much of a task is still to do: what was left after the last
+// session on it, or all of it when none has been logged.
+func (t *Task) Left() int {
+	if t.RemainingMinutes > 0 {
+		return t.RemainingMinutes
+	}
+	return t.Minutes()
 }
 
 // Recurring reports whether completing this task advances it rather than
@@ -157,6 +250,17 @@ func (t *Task) validate() error {
 	}
 	if err := validDue(t.Due); err != nil {
 		return err
+	}
+	if t.Start != "" {
+		if _, err := ParseDate(t.Start); err != nil {
+			return fmt.Errorf("start %q must be YYYY-MM-DD: %w", t.Start, ErrInvalid)
+		}
+		if t.RecurKind != "" {
+			return fmt.Errorf("a repeating task has no start date: its next date already says when it comes up: %w", ErrInvalid)
+		}
+		if t.Due != "" && t.Start > t.Due {
+			return fmt.Errorf("start %s is after the due date %s: %w", t.Start, t.Due, ErrInvalid)
+		}
 	}
 	if t.EstimateMinutes < 0 {
 		return fmt.Errorf("estimate_minutes must be positive: %w", ErrInvalid)

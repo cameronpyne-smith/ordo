@@ -63,44 +63,9 @@ type Options struct {
 	Prefs store.Preferences
 }
 
-// Estimates for a task the model has not measured, by difficulty. These are
-// the numbers completion history is meant to replace once there is enough of
-// it; until then they are a stated guess rather than a hidden one.
-const (
-	estimateLow     = 15
-	estimateMedium  = 45
-	estimateHigh    = 90
-	estimateUnknown = 30
-)
-
 // chunkFloor is the shortest piece of a big task worth starting. Under half
 // an hour the sitting goes on getting back into it.
 const chunkFloor = 30
-
-// Estimate is how long a task is taken to need.
-func Estimate(t *store.Task) int {
-	if t.EstimateMinutes > 0 {
-		return t.EstimateMinutes
-	}
-	switch t.Difficulty {
-	case store.DifficultyLow:
-		return estimateLow
-	case store.DifficultyMedium:
-		return estimateMedium
-	case store.DifficultyHigh:
-		return estimateHigh
-	}
-	return estimateUnknown
-}
-
-// Remaining is how much of a task is still to do: what was left after the
-// last session on it, or all of it when none has been logged.
-func Remaining(t *store.Task) int {
-	if t.RemainingMinutes > 0 {
-		return t.RemainingMinutes
-	}
-	return Estimate(t)
-}
 
 // ask is what one day asks of a task. Most tasks are done in one go, so the
 // day wants all of it and nothing less will do. A one-off with more left
@@ -115,13 +80,13 @@ type ask struct {
 }
 
 func askOf(day string, t *store.Task, p store.Preferences) ask {
-	left := Remaining(t)
+	left := t.Left()
 	if t.Recurring() || left <= p.MaxBlockMinutes {
 		return ask{minutes: left, floor: left}
 	}
 	a := ask{minutes: p.MaxBlockMinutes, left: left}
-	if t.Due != "" {
-		daysLeft := max(daysBetween(day, t.Due)+1, 1)
+	if due := t.Deadline(); due != "" {
+		daysLeft := max(daysBetween(day, due)+1, 1)
 		if need := (left + daysLeft - 1) / daysLeft; need > a.minutes {
 			a.minutes, a.catchUp = need, true
 		}
@@ -223,11 +188,13 @@ func Plan(o Options) (Day, error) {
 // as the date nears. A recurring task's due date is the occurrence itself:
 // the bins go out on Tuesday, not on Monday because there was room, so it
 // waits for its own day. An undated task may fill space on any day, which is
-// what "someday" means in practice. A pin to a later day holds the task back
-// for that day. A pin to
-// a day that has gone is spent: the task was not done on the day it was
-// meant for, so it goes back to its place in the order rather than
-// vanishing from every plan after it.
+// what "someday" means in practice. A task that is waiting, on another task
+// or for its start date, is not a candidate at all. A pin to a later day
+// holds the task back for that day. A pin to this day wins over everything,
+// waiting included: it is someone saying "today, regardless". A pin to a day
+// that has gone is spent: the task was not done on the day it was meant
+// for, so it goes back to its place in the order rather than vanishing from
+// every plan after it.
 func candidates(day string, tasks []*store.Task) []*store.Task {
 	var pinned, rest []*store.Task
 	for _, t := range tasks {
@@ -239,6 +206,7 @@ func candidates(day string, tasks []*store.Task) []*store.Task {
 			pinned = append(pinned, t)
 		case t.PinnedOn > day:
 			// Pinned to a later day; it belongs there, not here.
+		case t.Waiting(day):
 		case !t.Recurring() || t.Due == "" || t.Due <= day:
 			rest = append(rest, t)
 		}
@@ -307,17 +275,24 @@ func reserve(free []Window, i int, start, end time.Time, buffer time.Duration, m
 
 func reason(day string, t *store.Task, inDeep bool) string {
 	var parts []string
+	due := t.Deadline()
 	switch {
 	case t.PinnedFor(day):
 		parts = append(parts, "pinned to this day")
-	case t.Due != "" && t.Due < day:
-		parts = append(parts, fmt.Sprintf("overdue by %s", days(daysBetween(t.Due, day))))
-	case t.Due == day:
+		if waits := t.WaitingOn(); len(waits) > 0 {
+			parts = append(parts, "still waiting on "+ids(waits))
+		}
+	case due != "" && due < day:
+		parts = append(parts, fmt.Sprintf("overdue by %s", days(daysBetween(due, day))))
+	case due == day:
 		parts = append(parts, "due today")
-	case t.Due != "":
-		parts = append(parts, fmt.Sprintf("due in %s", days(daysBetween(day, t.Due))))
+	case due != "":
+		parts = append(parts, fmt.Sprintf("due in %s", days(daysBetween(day, due))))
 	default:
 		parts = append(parts, "nothing forced it, so the next one on the list")
+	}
+	if t.DueFor != 0 && !t.PinnedFor(day) {
+		parts[len(parts)-1] += fmt.Sprintf(" so %d can follow in time", t.DueFor)
 	}
 	if t.Priority == store.PriorityHigh {
 		parts = append(parts, "high priority")
@@ -326,7 +301,7 @@ func reason(day string, t *store.Task, inDeep bool) string {
 		parts = append(parts, "demanding, so it takes the deep-work window")
 	}
 	if t.EstimateMinutes == 0 {
-		parts = append(parts, fmt.Sprintf("%d min guessed from its difficulty", Estimate(t)))
+		parts = append(parts, fmt.Sprintf("%d min guessed from its difficulty", t.Minutes()))
 	}
 	return join(parts)
 }
@@ -429,6 +404,17 @@ func days(n int) string {
 		return "1 day"
 	}
 	return fmt.Sprintf("%d days", n)
+}
+
+func ids(deps []store.Dep) string {
+	out := ""
+	for i, d := range deps {
+		if i > 0 {
+			out += ", "
+		}
+		out += fmt.Sprint(d.ID)
+	}
+	return out
 }
 
 func join(parts []string) string {

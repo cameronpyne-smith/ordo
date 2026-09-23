@@ -41,6 +41,7 @@ const (
 	modeTook
 	modeLeft
 	modeNotes
+	modePick
 )
 
 // The filters are the whole of the TUI's cleverness, deliberately: each one
@@ -92,6 +93,10 @@ type Model struct {
 	helpFrom   mode
 	notes      textarea.Model
 	noteScroll int
+
+	pickFrom   []api.Task
+	pickTicked map[int64]bool
+	pickCursor int
 
 	took     api.Task
 	tookFrom mode
@@ -165,6 +170,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.sizeInput(m.field + ": ")
 		case modeAdd:
 			m = m.sizeInput("add: ")
+		case modePick:
+			m = m.sizeInput(pickPrompt)
 		}
 		return m, nil
 
@@ -183,6 +190,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dayMsg:
 		return m.applyDay(msg.resp, msg.err), nil
+
+	case pickMsg:
+		return m.applyPick(msg), nil
 
 	case dayActedMsg:
 		if msg.err != nil {
@@ -240,7 +250,7 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 	m.cursor = clampToTask(m.rows, m.cursor)
 	// An open task keeps up with the model: a field filled in behind the
 	// pane appears in it rather than waiting for it to be reopened.
-	if m.mode == modeEdit || m.mode == modeField || m.mode == modeNotes {
+	if m.mode == modeEdit || m.mode == modeField || m.mode == modeNotes || m.mode == modePick {
 		for _, t := range msg.resp.Tasks {
 			if t.ID == m.edit.ID {
 				m.edit = t
@@ -302,6 +312,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyLeft(msg)
 	case modeNotes:
 		return m.keyNotes(msg)
+	case modePick:
+		return m.keyPick(msg)
 	case modeHelp:
 		m.mode, m.helpFrom = m.helpFrom, modeList
 		return m, nil

@@ -342,13 +342,13 @@ func TestEstimateFallsBackToDifficulty(t *testing.T) {
 		want int
 	}{
 		{task(1, "measured", est(25)), 25},
-		{task(2, "low", func(x *store.Task) { x.Difficulty = store.DifficultyLow }), estimateLow},
-		{task(3, "medium", func(x *store.Task) { x.Difficulty = store.DifficultyMedium }), estimateMedium},
-		{task(4, "high", hard), estimateHigh},
-		{task(5, "unread"), estimateUnknown},
+		{task(2, "low", func(x *store.Task) { x.Difficulty = store.DifficultyLow }), store.EstimateLow},
+		{task(3, "medium", func(x *store.Task) { x.Difficulty = store.DifficultyMedium }), store.EstimateMedium},
+		{task(4, "high", hard), store.EstimateHigh},
+		{task(5, "unread"), store.EstimateUnknown},
 	}
 	for _, c := range cases {
-		if got := Estimate(c.task); got != c.want {
+		if got := c.task.Minutes(); got != c.want {
 			t.Errorf("%s: estimate = %d, want %d", c.task.Title, got, c.want)
 		}
 	}

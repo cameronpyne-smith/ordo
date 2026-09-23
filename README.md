@@ -63,11 +63,14 @@ ordo                             # the terminal view
 ordo add "Put the bins out" --every "weekly on tue" --difficulty low
 ordo add "Water the plants" --after 3d
 ordo add "Send the CV" --due 25/09/26 --priority high   # or 2026-09-25
+ordo add "Re-rate the skills matrix" --start 15/10/26 --waits-on 10,11
 ordo list                        # open tasks, in order
 ordo list --overdue --limit 5
 ordo list --recurring
 ordo list --note career-transition-quantitative-researcher
 ordo set 4 priority=high due=    # an empty value clears a field
+ordo set 12 waits_on=10,11       # the whole list; waits_on= clears it
+ordo set 12 start=15/10/26       # not in the plan before then
 ordo done 4 --minutes 25
 ordo work 4 60                   # an hour on it, not finished
 ordo work 4 60 --left 180        # ...and it turned out bigger than that
@@ -90,8 +93,39 @@ ordo backup                      # on the box; serve also snapshots nightly
 ```
 
 Listing order is fixed and explainable from the fields: overdue first, then by
-due date with undated last, then priority, then difficulty so easy work floats
+deadline with undated last, then priority, then difficulty so easy work floats
 within a tier, then oldest first. No ordering an LLM produced is ever stored.
+
+## Waiting
+
+**A start date** holds a one-off task out of the plan until that day; the due
+date stays the deadline. A repeating task has none, since its next date
+already says when it comes up. The model sets one only from an explicit
+"from monday" or "not before the 15th".
+
+**A dependency** says a task cannot start until others are finished. A task
+can wait on several and hold up several. Only open one-off tasks can be
+waited on, since a repeating one is never finished, and a loop is refused
+with the chain it would close. Finishing the last blocker releases the task,
+undoing that holds it up again, and deleting a blocker releases whatever it
+was holding. A task can still be marked done while it waits, because what
+happened wins. Dependencies are never inferred: a wrong guess would hide a
+task.
+
+A waiting task is left out of the plan and out of quick wins, unless it is
+pinned: a pin is "today, regardless". **Its deadline passes down** to what it
+waits on: a blocker has to be done by the dependent's deadline less the days
+the dependent needs at one sitting a day, down a whole chain, and a
+blocker's own earlier date still wins. So 12, due 15 Oct with 90 minutes
+left, makes 10 and 11 due 13 Oct, and the list and the plan both order them
+by that. The list shows the date with whose it is:
+
+```
+$ ordo list
+ID  DUE                PRIORITY  DIFFICULTY  TITLE
+10  2026-10-13 for 12  high      high        Read AFML chapter 11
+12  2026-10-15         normal    high        Re-rate the skills matrix (waits on 10, 11)
+```
 
 ## Recurring tasks
 
@@ -212,9 +246,11 @@ then: cutting a link is ordo's own business.
 
 Bare `ordo` opens the list in the terminal. It is a thin client like every
 other command: the daemon decides the order, and the terminal only groups it
-into **overdue**, **today**, **this week**, **later** and **someday**. A
-section can never reorder anything, because a task falls into the first one
-it qualifies for and the daemon's order is kept inside it.
+into **overdue**, **today**, **this week**, **later**, **someday** and
+**waiting**, which holds what cannot be started yet, each row saying why:
+"waits on 10, 11" or "from 2026-10-15". A section can never reorder
+anything, because a task falls into the first one it qualifies for and the
+daemon's order is kept inside it.
 
 ```
 ordo · open                                                            6 shown
@@ -281,17 +317,27 @@ ordo · #3
   Rewrite the latent pricing model
 
   u  due         2026-10-01
+  s  start       —
   p  priority    high
   d  difficulty  high
   m  estimate    90 min
   r  repeats     3d after each completion
   n  notes       the forward curve is the part that is wrong
   t  title       Rewrite the latent pricing model
+  w  waits on    13 Download the market data
+                 11 Fix the calendar ✓
+     blocks      15 Publish the pricing note
 
   [[latent]] Full reference dump for the project
 ────────────────────────────────────────────────────────────────────────────
-p d cycle · shift reverses · u m l r n t edit · esc back · ? help · q quit
+p d cycle · shift reverses · u s m l r n t w edit · esc back · ? help · q quit
 ```
+
+`w` opens a picker over the open tasks: type to filter by title, or a number
+for an id, space ticks, enter saves the whole list and esc changes nothing.
+It only offers what the task could wait on, so nothing repeating and nothing
+that already waits on this one. A blocker already done is ticked with ✓ and
+can be kept or dropped. `blocks` is what waits on this task.
 
 Once work has started the pane gains a `left` row under the estimate, and
 `l` edits it: that is a re-estimate part way through, and it logs no work.

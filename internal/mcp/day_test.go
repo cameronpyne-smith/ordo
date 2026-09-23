@@ -3,6 +3,7 @@ package mcp
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/store"
@@ -66,6 +67,7 @@ func TestPreferencesRefuseAnIncoherentDay(t *testing.T) {
 }
 
 func TestTodayPlansTheDay(t *testing.T) {
+	morning(t)
 	sess, _ := newSession(t, nil)
 
 	call[api.Task](t, sess, "todo_add", AddArgs{Title: "Water the plants", Due: store.Today(), EstimateMinutes: 20})
@@ -108,6 +110,7 @@ func TestTodayTakesADay(t *testing.T) {
 }
 
 func TestPinLiftsATaskToTheFrontOfTheDay(t *testing.T) {
+	morning(t)
 	sess, _ := newSession(t, nil)
 
 	call[api.Task](t, sess, "todo_add", AddArgs{Title: "Overdue and urgent",
@@ -153,6 +156,7 @@ func TestPinRefusesAMissingTask(t *testing.T) {
 // A task that did not fit has to be explained, because "why is that not in
 // my day" is the first thing anyone asks a scheduler.
 func TestTodayExplainsWhatDidNotFit(t *testing.T) {
+	morning(t)
 	sess, _ := newSession(t, nil)
 
 	cap := 30
@@ -166,5 +170,34 @@ func TestTodayExplainsWhatDidNotFit(t *testing.T) {
 	}
 	if len(plan.Skipped) != 1 || plan.Skipped[0].Reason == "" {
 		t.Fatalf("skipped = %+v, want the second task explained", plan.Skipped)
+	}
+}
+
+// morning pins the clock to early on today's date, so a test that plans
+// today has the whole day to plan into whatever time it runs.
+func morning(t *testing.T) {
+	t.Helper()
+	real := time.Now().In(store.Location)
+	when := time.Date(real.Year(), real.Month(), real.Day(), 8, 0, 0, 0, store.Location)
+	original := store.Now
+	store.Now = func() time.Time { return when }
+	t.Cleanup(func() { store.Now = original })
+}
+
+// blocked_by and start go through both tools' schemas, and an empty list on
+// todo_set clears what the task waits on.
+func TestDependenciesThroughTheTools(t *testing.T) {
+	sess, _ := newSession(t, nil)
+
+	read := call[api.Task](t, sess, "todo_add", AddArgs{Title: "Read AFML chapter 11"})
+	rerate := call[api.Task](t, sess, "todo_add", AddArgs{Title: "Re-rate the skills matrix",
+		Start: "2099-10-15", BlockedBy: []int64{read.ID}})
+	if !rerate.Blocked || rerate.Start != "2099-10-15" {
+		t.Fatalf("task = %+v, want it waiting on the reading from the 15th", rerate)
+	}
+	none := []int64{}
+	after := call[api.Task](t, sess, "todo_set", SetArgs{ID: rerate.ID, BlockedBy: &none})
+	if after.Blocked || len(after.BlockedBy) != 0 {
+		t.Fatalf("task = %+v, want an empty list to clear it", after)
 	}
 }

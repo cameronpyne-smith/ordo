@@ -13,13 +13,14 @@ type Inference struct {
 	Priority   Priority
 	Estimate   int
 	Due        string
+	Start      string
 	RecurKind  RecurKind
 	RecurRule  string
 }
 
 func (i Inference) Empty() bool {
 	return i.Difficulty == "" && i.Priority == "" && i.Estimate == 0 &&
-		i.Due == "" && i.RecurKind == ""
+		i.Due == "" && i.Start == "" && i.RecurKind == ""
 }
 
 // Enrich applies an inference and marks the task enriched. The mark is
@@ -39,7 +40,9 @@ func (s *Store) Enrich(id int64, in Inference) (*Task, error) {
 	if in.Estimate > 0 && t.EstimateMinutes == 0 {
 		t.EstimateMinutes = in.Estimate
 	}
-	if in.RecurKind != "" && !t.Recurring() {
+	// A start date and a schedule cannot both be set, and one the user gave
+	// outranks either guess.
+	if in.RecurKind != "" && !t.Recurring() && t.Start == "" {
 		t.RecurKind, t.RecurRule = in.RecurKind, in.RecurRule
 		// A schedule knows its own first date better than the model does, so
 		// an inferred rule computes the due rather than taking the inferred
@@ -48,6 +51,12 @@ func (s *Store) Enrich(id int64, in Inference) (*Task, error) {
 	}
 	if in.Due != "" && t.Due == "" {
 		t.Due = in.Due
+	}
+	// A start is only kept where it could have been typed: on a one-off, and
+	// not after the deadline. Anything else is a misreading, and dropping it
+	// keeps the rest of the answer.
+	if in.Start != "" && t.Start == "" && !t.Recurring() && (t.Due == "" || in.Start <= t.Due) {
+		t.Start = in.Start
 	}
 	if err := t.validate(); err != nil {
 		return nil, fmt.Errorf("enriching task %d: %w", id, err)

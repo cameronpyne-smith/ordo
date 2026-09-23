@@ -118,6 +118,10 @@ func (s *Service) Create(ctx context.Context, req api.CreateRequest) (api.Task, 
 	if err != nil {
 		return api.Task{}, err
 	}
+	blockers := make([]store.Dep, 0, len(req.BlockedBy))
+	for _, id := range req.BlockedBy {
+		blockers = append(blockers, store.Dep{ID: id})
+	}
 	t, err := s.store.Create(&store.Task{
 		Title:           req.Title,
 		Notes:           req.Notes,
@@ -125,10 +129,12 @@ func (s *Service) Create(ctx context.Context, req api.CreateRequest) (api.Task, 
 		Priority:        store.Priority(req.Priority),
 		EstimateMinutes: req.EstimateMinutes,
 		Due:             req.Due,
+		Start:           req.Start,
 		RecurKind:       store.RecurKind(req.RecurKind),
 		RecurRule:       req.RecurRule,
 		MnemoSlug:       slug,
 		MnemoTitle:      title,
+		BlockedBy:       blockers,
 	})
 	if err != nil {
 		return api.Task{}, err

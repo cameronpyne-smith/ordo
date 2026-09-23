@@ -19,10 +19,11 @@ var Schema = map[string]any{
 		"priority":   map[string]any{"type": "string", "enum": []string{"low", "normal", "high"}},
 		"minutes":    map[string]any{"type": "integer"},
 		"due":        map[string]any{"type": "string"},
+		"start":      map[string]any{"type": "string"},
 		"recur_kind": map[string]any{"type": "string", "enum": []string{"", "every", "after"}},
 		"recur_rule": map[string]any{"type": "string"},
 	},
-	"required": []string{"difficulty", "priority", "minutes", "due", "recur_kind", "recur_rule"},
+	"required": []string{"difficulty", "priority", "minutes", "due", "start", "recur_kind", "recur_rule"},
 }
 
 // maxEstimate rejects a runaway number rather than letting it swallow a whole
@@ -44,6 +45,9 @@ minutes: how long one go at this takes, in whole minutes, judged from the task i
   more. A repeating task means one occurrence, not the whole series. Use 0 when you cannot tell.
 due: the date the task is for, as YYYY-MM-DD. Resolve words like "tomorrow", "friday" or
   "next week" against today's date. Use "" when the task names no date.
+start: the date the task cannot begin before, as YYYY-MM-DD, only when the task says so in so many
+  words: "from monday", "starting the 15th", "not before october", "after the 3rd". A deadline is due,
+  not start. Use "" otherwise, and always for a repeating task.
 recur_kind: "every" when the task repeats on a fixed schedule, "after" when it repeats a fixed
   interval after each time it is done, "" when it does not repeat. "every 2w" is a fortnightly
   cycle; "after 2w" is two weeks from the day it was last done.
@@ -72,6 +76,7 @@ type extraction struct {
 	Priority   string `json:"priority"`
 	Minutes    int    `json:"minutes"`
 	Due        string `json:"due"`
+	Start      string `json:"start"`
 	RecurKind  string `json:"recur_kind"`
 	RecurRule  string `json:"recur_rule"`
 }
@@ -110,6 +115,14 @@ func (e extraction) inference(log *slog.Logger, id int64) store.Inference {
 			log.Warn("model returned an unusable due date", "id", id, "due", e.Due)
 		} else {
 			in.Due = e.Due
+		}
+	}
+
+	if e.Start != "" {
+		if _, err := store.ParseDate(e.Start); err != nil {
+			log.Warn("model returned an unusable start date", "id", id, "start", e.Start)
+		} else {
+			in.Start = e.Start
 		}
 	}
 

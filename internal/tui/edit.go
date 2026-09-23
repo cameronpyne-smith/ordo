@@ -44,6 +44,8 @@ type field struct {
 
 var fields = []field{
 	{"due", "u", func(t api.Task) string { return t.Due }, func(t api.Task) string { return t.Due }, nil},
+	{"start", "s", func(t api.Task) string { return t.Start }, func(t api.Task) string { return t.Start },
+		func(t api.Task) bool { return t.Recur == nil }},
 	{"priority", "p", func(t api.Task) string { return t.Priority }, nil, nil},
 	{"difficulty", "d", func(t api.Task) string { return t.Difficulty }, nil, nil},
 	{"estimate", "m", showEstimate, textEstimate, nil},
@@ -120,6 +122,8 @@ func (m Model) keyEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.cycleField("difficulty", difficulties, m.edit.Difficulty, -1)
 	case "n":
 		return m.openNotes()
+	case "w":
+		return m.openPick()
 	case "j", "down":
 		return m.scrollNotes(1), nil
 	case "k", "up":
@@ -224,6 +228,12 @@ func editRequest(name, value string) (api.EditRequest, error) {
 			return req, err
 		}
 		req.Due = &due
+	case "start":
+		start, err := store.ReadDate(value)
+		if err != nil {
+			return req, err
+		}
+		req.Start = &start
 	case "priority":
 		req.Priority = &value
 	case "difficulty":
@@ -308,6 +318,10 @@ func (m Model) editBody(width int) string {
 		row := "  " + faintStyle.Render(f.key) + "  " + faintStyle.Render(fmt.Sprintf("%-12s", f.name)) + value
 		lines = append(lines, truncate(row, width))
 	}
+	lines = append(lines, depRows("w", "waits on", m.edit.BlockedBy, true, width)...)
+	if len(m.edit.Blocks) > 0 {
+		lines = append(lines, depRows(" ", "blocks", m.edit.Blocks, false, width)...)
+	}
 	if m.edit.Mnemo != nil {
 		lines = append(lines, "", truncate("  "+linkStyle.Render("[["+m.edit.Mnemo.Slug+"]]")+
 			faintStyle.Render(" "+m.edit.Mnemo.Title), width))
@@ -316,6 +330,30 @@ func (m Model) editBody(width int) string {
 		lines = append(lines, "", faintStyle.Render("  pinned to "+m.edit.PinnedOn))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// depRows lists one end of the task's dependencies a line each, under a
+// single label. A blocker already done is ticked, since it no longer holds
+// anything up but will again if its completion is undone.
+func depRows(key, name string, deps []api.Dep, tick bool, width int) []string {
+	label := "  " + faintStyle.Render(key) + "  " + faintStyle.Render(fmt.Sprintf("%-12s", name))
+	if len(deps) == 0 {
+		return []string{truncate(label+faintStyle.Render("—"), width)}
+	}
+	blank := strings.Repeat(" ", lipgloss.Width(label))
+	var out []string
+	for i, d := range deps {
+		lead := blank
+		if i == 0 {
+			lead = label
+		}
+		row := lead + faintStyle.Render(fmt.Sprintf("%d ", d.ID)) + d.Title
+		if tick && d.Done {
+			row = lead + faintStyle.Render(fmt.Sprintf("%d %s ✓", d.ID, d.Title))
+		}
+		out = append(out, truncate(row, width))
+	}
+	return out
 }
 
 // sizeInput fits the one-line editor between its prompt and the edge, so a
@@ -348,6 +386,6 @@ func (m Model) editFooter(width int) string {
 	if m.failure != "" {
 		status = errorStyle.Render(m.failure)
 	}
-	keys := faintStyle.Render("p d cycle · shift reverses · u m l r n t edit · esc back · ? help · q quit")
+	keys := faintStyle.Render("p d cycle · shift reverses · u s m l r n t w edit · esc back · ? help · q quit")
 	return rule(width) + "\n" + pad(keys, status, width)
 }

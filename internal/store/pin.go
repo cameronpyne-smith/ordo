@@ -56,6 +56,10 @@ func (s *Store) Pinned(day string) ([]*Task, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("listing pinned tasks: %w", err)
 	}
+	rows.Close()
+	if err := s.annotate(tasks); err != nil {
+		return nil, err
+	}
 	Sort(tasks)
 	return tasks, nil
 }

@@ -63,7 +63,7 @@ func newListCmd(configPath *string) *cobra.Command {
 
 func newAddCmd(configPath *string) *cobra.Command {
 	var req api.CreateRequest
-	var every, after string
+	var every, after, waitsOn string
 
 	cmd := &cobra.Command{
 		Use:   "add <title...>",
@@ -85,6 +85,12 @@ func newAddCmd(configPath *string) *cobra.Command {
 			if req.Due, err = store.ReadDate(req.Due); err != nil {
 				return err
 			}
+			if req.Start, err = store.ReadDate(req.Start); err != nil {
+				return err
+			}
+			if req.BlockedBy, err = parseIDs(waitsOn); err != nil {
+				return err
+			}
 			req.Title = strings.Join(args, " ")
 			t, err := c.Create(req)
 			if err != nil {
@@ -96,6 +102,8 @@ func newAddCmd(configPath *string) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&req.Notes, "notes", "", "a one-liner worth keeping with the task")
 	cmd.Flags().StringVar(&req.Due, "due", "", "due date, 25/09/26 or 2026-09-25")
+	cmd.Flags().StringVar(&req.Start, "start", "", "not before this date, 25/09/26 or 2026-09-25")
+	cmd.Flags().StringVar(&waitsOn, "waits-on", "", "ids of tasks that have to be finished first: 10,11")
 	cmd.Flags().StringVar(&req.Difficulty, "difficulty", "", "low, medium or high")
 	cmd.Flags().StringVar(&req.Priority, "priority", "", "low, normal or high")
 	cmd.Flags().IntVar(&req.EstimateMinutes, "estimate", 0, "estimated minutes")
@@ -184,8 +192,10 @@ func newSetCmd(configPath *string) *cobra.Command {
 		Use:   "set <id> <key=value>...",
 		Short: "Change fields on a task; an empty value clears one",
 		Long: "Change fields on a task. Keys: title, notes, status, difficulty, priority, due,\n" +
-			"estimate, left, every, after. left is what remains of a task already started.\n" +
-			"An empty value clears the field, for example due= or every=.",
+			"start, waits_on, estimate, left, every, after. left is what remains of a task\n" +
+			"already started. start holds it out of the plan until that day. waits_on is the\n" +
+			"whole list of tasks it waits on, waits_on=10,11, replacing what it had.\n" +
+			"An empty value clears the field, for example due= or waits_on=.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -361,6 +371,19 @@ func parseID(raw string) (int64, error) {
 	return id, nil
 }
 
+// parseIDs reads a list of task ids as typed: commas, spaces or both.
+func parseIDs(raw string) ([]int64, error) {
+	ids := []int64{}
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ' ' }) {
+		id, err := parseID(part)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 func parseEdits(pairs []string) (api.EditRequest, error) {
 	var req api.EditRequest
 	for _, pair := range pairs {
@@ -387,6 +410,18 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 				return req, err
 			}
 			req.Due = &due
+		case "start":
+			start, err := store.ReadDate(value)
+			if err != nil {
+				return req, err
+			}
+			req.Start = &start
+		case "waits_on", "waits-on", "blocked_by":
+			ids, err := parseIDs(value)
+			if err != nil {
+				return req, err
+			}
+			req.BlockedBy = &ids
 		case "every", "after":
 			kind := key
 			if value == "" {
@@ -414,7 +449,7 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 			}
 			req.RemainingMinutes = &minutes
 		default:
-			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due, estimate, left, every or after", key)
+			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due, start, waits_on, estimate, left, every or after", key)
 		}
 	}
 	return req, nil
@@ -471,14 +506,23 @@ func dueSuffix(t *api.Task) string {
 	return " (due " + t.Due + ")"
 }
 
+// dueCell shows the date the task has to be done by, which for a task others
+// wait on can be earlier than its own, and says whose date it is.
 func dueCell(t api.Task) string {
-	if t.Due == "" {
+	date := t.Due
+	if t.EffectiveDue != "" {
+		date = t.EffectiveDue
+	}
+	if date == "" {
 		return "-"
 	}
 	if t.Overdue {
-		return t.Due + "!"
+		date += "!"
 	}
-	return t.Due
+	if t.EffectiveDue != "" {
+		date += fmt.Sprintf(" for %d", t.DueFor)
+	}
+	return date
 }
 
 // titleCell marks a task the enrichment worker has not reached yet, so a bare
@@ -491,6 +535,9 @@ func titleCell(t api.Task) string {
 	if !t.Enriched {
 		title += " ~"
 	}
+	if wait := waitingNote(t); wait != "" {
+		title += " (" + wait + ")"
+	}
 	if t.Mnemo != nil {
 		title += " [[" + t.Mnemo.Slug + "]]"
 		if t.Mnemo.Missing {
@@ -498,6 +545,26 @@ func titleCell(t api.Task) string {
 		}
 	}
 	return title
+}
+
+// waitingNote says why an open task cannot be started yet, or nothing.
+func waitingNote(t api.Task) string {
+	if t.Status != string(store.StatusOpen) {
+		return ""
+	}
+	var ids []string
+	for _, d := range t.BlockedBy {
+		if !d.Done {
+			ids = append(ids, strconv.FormatInt(d.ID, 10))
+		}
+	}
+	switch {
+	case len(ids) > 0:
+		return "waits on " + strings.Join(ids, ", ")
+	case t.Start > store.Today():
+		return "from " + t.Start
+	}
+	return ""
 }
 
 func dash(s string) string {

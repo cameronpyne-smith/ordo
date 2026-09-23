@@ -18,7 +18,13 @@ func FromTask(t *store.Task) Task {
 		EstimateMinutes:  t.EstimateMinutes,
 		RemainingMinutes: t.RemainingMinutes,
 		Due:              t.Due,
+		EffectiveDue:     t.EffectiveDue,
+		DueFor:           t.DueFor,
+		Start:            t.Start,
 		Overdue:          t.Overdue(),
+		BlockedBy:        fromDeps(t.BlockedBy),
+		Blocks:           fromDeps(t.Blocks),
+		Blocked:          t.Blocked(),
 		PinnedOn:         t.PinnedOn,
 		CreatedAt:        t.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        t.UpdatedAt.Format(time.RFC3339),
@@ -36,6 +42,17 @@ func FromTask(t *store.Task) Task {
 	return out
 }
 
+func fromDeps(deps []store.Dep) []Dep {
+	if len(deps) == 0 {
+		return nil
+	}
+	out := make([]Dep, 0, len(deps))
+	for _, d := range deps {
+		out = append(out, Dep{ID: d.ID, Title: d.Title, Done: d.Done})
+	}
+	return out
+}
+
 func FromTasks(tasks []*store.Task) []Task {
 	out := make([]Task, 0, len(tasks))
 	for _, t := range tasks {
@@ -49,6 +66,8 @@ func (r EditRequest) Edit() store.Edit {
 	e.Title = r.Title
 	e.Notes = r.Notes
 	e.Due = r.Due
+	e.Start = r.Start
+	e.BlockedBy = r.BlockedBy
 	e.Estimate = r.EstimateMinutes
 	e.Remaining = r.RemainingMinutes
 	if r.Status != nil {

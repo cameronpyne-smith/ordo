@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/store"
@@ -51,6 +52,7 @@ func TestPreferencesRejectTheIncoherent(t *testing.T) {
 }
 
 func TestTodayOverHTTP(t *testing.T) {
+	morning(t)
 	h, st, _ := newTestServer(t)
 
 	if _, err := st.Create(&store.Task{Title: "Send the CV", Due: store.Today(), EstimateMinutes: 40}); err != nil {
@@ -135,4 +137,15 @@ func TestPinMapsItsErrors(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "YYYY-MM-DD") {
 		t.Errorf("body = %s, want it to say the format", rec.Body)
 	}
+}
+
+// morning pins the clock to early on today's date, so a test that plans
+// today has the whole day to plan into whatever time it runs.
+func morning(t *testing.T) {
+	t.Helper()
+	real := time.Now().In(store.Location)
+	when := time.Date(real.Year(), real.Month(), real.Day(), 8, 0, 0, 0, store.Location)
+	original := store.Now
+	store.Now = func() time.Time { return when }
+	t.Cleanup(func() { store.Now = original })
 }

@@ -38,6 +38,9 @@ func (m Model) View() string {
 	if m.mode == modeNotes {
 		return m.notesView(width, height)
 	}
+	if m.mode == modePick {
+		return m.pickView()
+	}
 
 	header := m.header(width)
 	footer := m.footer(width)
@@ -111,8 +114,8 @@ func (m Model) renderRow(i, width int) string {
 		marker = "▸ "
 	}
 	due := "          "
-	if t.Due != "" {
-		due = t.Due
+	if deadline(t) != "" {
+		due = deadline(t)
 	}
 	if t.Overdue {
 		due = overdueStyle.Render(due)
@@ -137,10 +140,17 @@ func (m Model) renderRow(i, width int) string {
 	return line + suffix
 }
 
-// suffix carries the two things worth seeing on every row without opening
-// it: where it points in the vault, and whether the model has been yet.
+// suffix carries what is worth seeing on every row without opening it: why
+// it cannot be started yet, whose deadline its date is, where it points in
+// the vault, and whether the model has been yet.
 func (m Model) suffix(t api.Task) string {
 	var out string
+	switch wait := waitPhrase(t); {
+	case wait != "":
+		out += faintStyle.Render(" " + wait)
+	case t.EffectiveDue != "":
+		out += faintStyle.Render(fmt.Sprintf(" for %d", t.DueFor))
+	}
 	if t.Mnemo != nil {
 		style := linkStyle
 		text := " [[" + t.Mnemo.Slug + "]]"
@@ -273,10 +283,11 @@ func (m Model) help() string {
 	return strings.Join([]string{
 		headingStyle.Render("ordo"),
 		"",
-		"  The list is the daemon's order: overdue first, then by due date with",
+		"  The list is the daemon's order: overdue first, then by deadline with",
 		"  undated last, then priority, then difficulty. The sections group that",
-		"  order; they never change it. The line under the list says which fields",
-		"  put the selected task where it is.",
+		"  order; they never change it. waiting holds what cannot be started yet,",
+		"  on another task or for its start date. The line under the list says",
+		"  which fields put the selected task where it is.",
 		"",
 		headingStyle.Render("moving"),
 		"  j k ↑ ↓   move          g G   first, last",
@@ -296,11 +307,16 @@ func (m Model) help() string {
 		"",
 		headingStyle.Render("changing a task"),
 		"  enter opens the task. Inside it p and d cycle priority and difficulty,",
-		"  shift steps back, and u m l r t open a prefilled line for the due date,",
-		"  estimate, what is left, repeat rule and title. A date is day first,",
-		"  25/09/26, or 2026-09-25. Every press saves; an empty value clears the",
-		"  field. The estimate stays the first guess once work has started; left",
-		"  is what the plan uses, and clearing it goes back to the estimate.",
+		"  shift steps back, and u s m l r t open a prefilled line for the due date,",
+		"  start date, estimate, what is left, repeat rule and title. A date is day",
+		"  first, 25/09/26, or 2026-09-25. Every press saves; an empty value clears",
+		"  the field. The estimate stays the first guess once work has started;",
+		"  left is what the plan uses, and clearing it goes back to the estimate.",
+		"  A start date keeps a task out of the plan until that day.",
+		"  w picks what the task waits on: type to filter by title or id, space",
+		"  ticks, enter saves. A waiting task is left out of the plan, and the",
+		"  tasks it waits on are brought forward to leave it time for its own",
+		"  deadline. blocks shows what waits on this one.",
 		"  A long title is shown whole at the top. A note too long for its row is",
 		"  shown whole underneath, j k to scroll.",
 		"  n edits it over several lines: enter starts a new line, ctrl+s saves.",

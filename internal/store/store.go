@@ -124,6 +124,19 @@ var migrations = []string{
 	ALTER TABLE completions ADD COLUMN left_minutes INTEGER;
 	ALTER TABLE completions ADD COLUMN remaining_before INTEGER;
 	ALTER TABLE preferences ADD COLUMN max_block_minutes INTEGER NOT NULL DEFAULT 60;`,
+
+	// A start date says when a task can begin, where the due date says when
+	// it has to be done. A dependency is a pair of tasks rather than a column,
+	// since one task can wait on several and hold up several; either end
+	// being deleted takes the pair with it, which is what releases whatever
+	// a deleted task was holding up.
+	`ALTER TABLE tasks ADD COLUMN start_on TEXT;
+	CREATE TABLE blockers (
+		task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		blocker_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		PRIMARY KEY (task_id, blocker_id)
+	);
+	CREATE INDEX blockers_blocker ON blockers(blocker_id);`,
 }
 
 func (s *Store) migrate(path string) error {
@@ -182,9 +195,11 @@ func (s *Store) snapshotBefore(path string, to int) (string, error) {
 	return out, nil
 }
 
-const taskColumns = `id, title, notes, status, difficulty, priority, estimate_minutes, remaining_minutes, due,
+const taskColumns = `id, title, notes, status, difficulty, priority, estimate_minutes, remaining_minutes, due, start_on,
 	recur_kind, recur_rule, mnemo_slug, mnemo_title, pinned_on, created_at, updated_at, done_at, enriched_at`
 
+// Create writes a new task, and what it waits on when BlockedBy names any,
+// as one step.
 func (s *Store) Create(t *Task) (*Task, error) {
 	if t.Status == "" {
 		t.Status = StatusOpen
@@ -194,18 +209,35 @@ func (s *Store) Create(t *Task) (*Task, error) {
 	}
 	now := Now()
 	t.CreatedAt, t.UpdatedAt = now, now
-	res, err := s.db.Exec(`INSERT INTO tasks
-		(title, notes, status, difficulty, priority, estimate_minutes, due,
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("creating task: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO tasks
+		(title, notes, status, difficulty, priority, estimate_minutes, due, start_on,
 		 recur_kind, recur_rule, mnemo_slug, mnemo_title, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.Title, nullStr(t.Notes), string(t.Status), nullStr(string(t.Difficulty)), nullStr(string(t.Priority)),
-		nullInt(t.EstimateMinutes), nullStr(t.Due), nullStr(string(t.RecurKind)), nullStr(t.RecurRule),
+		nullInt(t.EstimateMinutes), nullStr(t.Due), nullStr(t.Start), nullStr(string(t.RecurKind)), nullStr(t.RecurRule),
 		nullStr(t.MnemoSlug), nullStr(t.MnemoTitle), stamp(now), stamp(now))
 	if err != nil {
 		return nil, fmt.Errorf("creating task: %w", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
+		return nil, fmt.Errorf("creating task: %w", err)
+	}
+	if len(t.BlockedBy) > 0 {
+		ids := make([]int64, 0, len(t.BlockedBy))
+		for _, d := range t.BlockedBy {
+			ids = append(ids, d.ID)
+		}
+		if err := setBlockers(tx, id, ids); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("creating task: %w", err)
 	}
 	return s.Get(id)
@@ -219,6 +251,9 @@ func (s *Store) Get(id int64) (*Task, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading task %d: %w", id, err)
+	}
+	if err := s.annotate([]*Task{t}); err != nil {
+		return nil, err
 	}
 	return t, nil
 }
@@ -267,9 +302,6 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 		}
 		args = append(args, string(f.Priority))
 	}
-	if f.Overdue {
-		where, args = append(where, "due IS NOT NULL AND due < ?"), append(args, Today())
-	}
 	if f.Linked {
 		where = append(where, "mnemo_slug IS NOT NULL")
 	}
@@ -306,6 +338,24 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
+	rows.Close()
+	if err := s.annotate(tasks); err != nil {
+		return nil, err
+	}
+	// Overdue is judged on the deadline a task has been passed, and a quick
+	// win is something you could start now, so both are decided once the
+	// dependencies are known rather than in SQL.
+	if f.Overdue || f.Quick {
+		today := Today()
+		kept := tasks[:0]
+		for _, t := range tasks {
+			if f.Overdue && !t.Overdue() || f.Quick && t.Waiting(today) {
+				continue
+			}
+			kept = append(kept, t)
+		}
+		tasks = kept
+	}
 	Sort(tasks)
 	if f.Limit > 0 && len(tasks) > f.Limit {
 		tasks = tasks[:f.Limit]
@@ -315,7 +365,8 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 
 // Edit carries only the fields a caller wants changed. An empty string clears
 // a nullable text field; a zero estimate clears the estimate, and a zero
-// remaining puts the task back to its whole estimate.
+// remaining puts the task back to its whole estimate. BlockedBy replaces
+// everything the task waits on, and an empty list clears it.
 type Edit struct {
 	Title      *string
 	Notes      *string
@@ -325,17 +376,19 @@ type Edit struct {
 	Estimate   *int
 	Remaining  *int
 	Due        *string
+	Start      *string
 	RecurKind  *RecurKind
 	RecurRule  *string
 	MnemoSlug  *string
 	MnemoTitle *string
+	BlockedBy  *[]int64
 }
 
 // Empty reports whether the edit would change nothing.
 func (e Edit) Empty() bool {
 	return e.Title == nil && e.Notes == nil && e.Status == nil && e.Difficulty == nil &&
-		e.Priority == nil && e.Estimate == nil && e.Remaining == nil && e.Due == nil && e.RecurKind == nil &&
-		e.RecurRule == nil && e.MnemoSlug == nil && e.MnemoTitle == nil
+		e.Priority == nil && e.Estimate == nil && e.Remaining == nil && e.Due == nil && e.Start == nil &&
+		e.RecurKind == nil && e.RecurRule == nil && e.MnemoSlug == nil && e.MnemoTitle == nil && e.BlockedBy == nil
 }
 
 // TitleChanged reports whether this edit rewrites the title, the only change
@@ -383,6 +436,9 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if e.Due != nil {
 		t.Due = *e.Due
 	}
+	if e.Start != nil {
+		t.Start = *e.Start
+	}
 	if e.RecurKind != nil {
 		t.RecurKind = *e.RecurKind
 	}
@@ -395,8 +451,17 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if e.MnemoTitle != nil {
 		t.MnemoTitle = *e.MnemoTitle
 	}
+	// A task that has just become recurring drops its start date the way it
+	// drops what was left of it; asking for both at once is refused below.
+	if t.Recurring() && e.Start == nil {
+		t.Start = ""
+	}
 	if err := t.validate(); err != nil {
 		return nil, err
+	}
+	if t.Recurring() && len(t.Blocks) > 0 {
+		return nil, fmt.Errorf("task %d is waited on by %s, and a repeating task is never finished: %w",
+			id, depIDs(t.Blocks), ErrInvalid)
 	}
 	// An occurrence of a recurring task is done in one go, so there is never
 	// anything left of one. Asking for it is a mistake worth saying; a task
@@ -420,22 +485,43 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if t.Status == StatusOpen && !t.Recurring() {
 		t.DoneAt = nil
 	}
-	return s.save(t)
+	if e.BlockedBy == nil {
+		return s.save(t)
+	}
+	return s.saveWith(t, func(tx *sql.Tx) error { return setBlockers(tx, id, *e.BlockedBy) })
 }
 
-func (s *Store) save(t *Task) (*Task, error) {
+func (s *Store) save(t *Task) (*Task, error) { return s.saveWith(t, nil) }
+
+// saveWith writes the task and whatever else has to change with it in one
+// transaction, so an edit that is refused halfway leaves nothing behind.
+func (s *Store) saveWith(t *Task, also func(*sql.Tx) error) (*Task, error) {
 	t.UpdatedAt = Now()
-	_, err := s.db.Exec(`UPDATE tasks SET
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("saving task %d: %w", t.ID, err)
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`UPDATE tasks SET
 		title = ?, notes = ?, status = ?, difficulty = ?, priority = ?, estimate_minutes = ?,
-		remaining_minutes = ?, due = ?, recur_kind = ?, recur_rule = ?, mnemo_slug = ?, mnemo_title = ?,
+		remaining_minutes = ?, due = ?, start_on = ?, recur_kind = ?, recur_rule = ?, mnemo_slug = ?, mnemo_title = ?,
 		pinned_on = ?, updated_at = ?, done_at = ?, enriched_at = ?
 		WHERE id = ?`,
 		t.Title, nullStr(t.Notes), string(t.Status), nullStr(string(t.Difficulty)), nullStr(string(t.Priority)),
-		nullInt(t.EstimateMinutes), nullInt(t.RemainingMinutes), nullStr(t.Due), nullStr(string(t.RecurKind)), nullStr(t.RecurRule),
+		nullInt(t.EstimateMinutes), nullInt(t.RemainingMinutes), nullStr(t.Due), nullStr(t.Start),
+		nullStr(string(t.RecurKind)), nullStr(t.RecurRule),
 		nullStr(t.MnemoSlug), nullStr(t.MnemoTitle), nullStr(t.PinnedOn),
 		stamp(t.UpdatedAt), stampPtr(t.DoneAt), stampPtr(t.EnrichedAt),
 		t.ID)
 	if err != nil {
+		return nil, fmt.Errorf("saving task %d: %w", t.ID, err)
+	}
+	if also != nil {
+		if err := also(tx); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("saving task %d: %w", t.ID, err)
 	}
 	return s.Get(t.ID)
@@ -739,6 +825,7 @@ func scanTask(row scanner) (*Task, error) {
 		estimate   sql.NullInt64
 		remaining  sql.NullInt64
 		due        sql.NullString
+		start      sql.NullString
 		recurKind  sql.NullString
 		recurRule  sql.NullString
 		mnemoSlug  sql.NullString
@@ -749,7 +836,7 @@ func scanTask(row scanner) (*Task, error) {
 		doneAt     sql.NullString
 		enrichedAt sql.NullString
 	)
-	if err := row.Scan(&t.ID, &t.Title, &notes, &t.Status, &difficulty, &priority, &estimate, &remaining, &due,
+	if err := row.Scan(&t.ID, &t.Title, &notes, &t.Status, &difficulty, &priority, &estimate, &remaining, &due, &start,
 		&recurKind, &recurRule, &mnemoSlug, &mnemoTitle, &pinnedOn, &createdAt, &updatedAt, &doneAt, &enrichedAt); err != nil {
 		return nil, err
 	}
@@ -759,6 +846,7 @@ func scanTask(row scanner) (*Task, error) {
 	t.EstimateMinutes = int(estimate.Int64)
 	t.RemainingMinutes = int(remaining.Int64)
 	t.Due = due.String
+	t.Start = start.String
 	t.RecurKind = RecurKind(recurKind.String)
 	t.RecurRule = recurRule.String
 	t.MnemoSlug = mnemoSlug.String

@@ -129,7 +129,7 @@ func (w *Worker) enrich(ctx context.Context, id int64) error {
 		return err
 	}
 	w.log.Info("enriched", "id", id, "difficulty", after.Difficulty, "priority", after.Priority,
-		"due", after.Due, "recur", after.RecurRule)
+		"due", after.Due, "start", after.Start, "recur", after.RecurRule)
 	if w.OnEnriched != nil {
 		w.OnEnriched(id)
 	}

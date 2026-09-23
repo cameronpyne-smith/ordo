@@ -12,7 +12,13 @@ type Task struct {
 	EstimateMinutes  int    `json:"estimate_minutes,omitempty"`
 	RemainingMinutes int    `json:"remaining_minutes,omitempty"`
 	Due              string `json:"due,omitempty"`
+	EffectiveDue     string `json:"effective_due,omitempty"`
+	DueFor           int64  `json:"due_for,omitempty"`
+	Start            string `json:"start,omitempty"`
 	Overdue          bool   `json:"overdue,omitempty"`
+	BlockedBy        []Dep  `json:"blocked_by,omitempty"`
+	Blocks           []Dep  `json:"blocks,omitempty"`
+	Blocked          bool   `json:"blocked,omitempty"`
 	Recur            *Recur `json:"recur,omitempty"`
 	Mnemo            *Link  `json:"mnemo,omitempty"`
 	PinnedOn         string `json:"pinned_on,omitempty"`
@@ -20,6 +26,15 @@ type Task struct {
 	UpdatedAt        string `json:"updated_at"`
 	DoneAt           string `json:"done_at,omitempty"`
 	Enriched         bool   `json:"enriched"`
+}
+
+// Dep is the other end of a dependency. EffectiveDue on a task is set only
+// when a task waiting on it has passed down a deadline earlier than its own
+// due date, and DueFor names that task.
+type Dep struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	Done  bool   `json:"done,omitempty"`
 }
 
 type Recur struct {
@@ -71,31 +86,36 @@ type LinkRequest struct {
 }
 
 type CreateRequest struct {
-	Title           string `json:"title"`
-	Notes           string `json:"notes,omitempty"`
-	Difficulty      string `json:"difficulty,omitempty"`
-	Priority        string `json:"priority,omitempty"`
-	EstimateMinutes int    `json:"estimate_minutes,omitempty"`
-	Due             string `json:"due,omitempty"`
-	RecurKind       string `json:"recur_kind,omitempty"`
-	RecurRule       string `json:"recur_rule,omitempty"`
-	MnemoSlug       string `json:"mnemo_slug,omitempty"`
+	Title           string  `json:"title"`
+	Notes           string  `json:"notes,omitempty"`
+	Difficulty      string  `json:"difficulty,omitempty"`
+	Priority        string  `json:"priority,omitempty"`
+	EstimateMinutes int     `json:"estimate_minutes,omitempty"`
+	Due             string  `json:"due,omitempty"`
+	Start           string  `json:"start,omitempty"`
+	RecurKind       string  `json:"recur_kind,omitempty"`
+	RecurRule       string  `json:"recur_rule,omitempty"`
+	MnemoSlug       string  `json:"mnemo_slug,omitempty"`
+	BlockedBy       []int64 `json:"blocked_by,omitempty"`
 }
 
 // EditRequest changes only the fields it carries. An absent or null field is
 // untouched; an empty string clears a text field, a zero estimate clears the
 // estimate and a zero remaining puts the task back to its whole estimate.
+// BlockedBy replaces everything the task waits on; an empty list clears it.
 type EditRequest struct {
-	Title            *string `json:"title,omitempty"`
-	Notes            *string `json:"notes,omitempty"`
-	Status           *string `json:"status,omitempty"`
-	Difficulty       *string `json:"difficulty,omitempty"`
-	Priority         *string `json:"priority,omitempty"`
-	EstimateMinutes  *int    `json:"estimate_minutes,omitempty"`
-	RemainingMinutes *int    `json:"remaining_minutes,omitempty"`
-	Due              *string `json:"due,omitempty"`
-	RecurKind        *string `json:"recur_kind,omitempty"`
-	RecurRule        *string `json:"recur_rule,omitempty"`
+	Title            *string  `json:"title,omitempty"`
+	Notes            *string  `json:"notes,omitempty"`
+	Status           *string  `json:"status,omitempty"`
+	Difficulty       *string  `json:"difficulty,omitempty"`
+	Priority         *string  `json:"priority,omitempty"`
+	EstimateMinutes  *int     `json:"estimate_minutes,omitempty"`
+	RemainingMinutes *int     `json:"remaining_minutes,omitempty"`
+	Due              *string  `json:"due,omitempty"`
+	Start            *string  `json:"start,omitempty"`
+	RecurKind        *string  `json:"recur_kind,omitempty"`
+	RecurRule        *string  `json:"recur_rule,omitempty"`
+	BlockedBy        *[]int64 `json:"blocked_by,omitempty"`
 }
 
 type DoneRequest struct {

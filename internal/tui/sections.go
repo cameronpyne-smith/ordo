@@ -19,11 +19,12 @@ const (
 	sectionThisWeek = "this week"
 	sectionLater    = "later"
 	sectionSomeday  = "someday"
+	sectionWaiting  = "waiting"
 	sectionDone     = "done"
 )
 
 var sectionOrder = []string{
-	sectionOverdue, sectionToday, sectionThisWeek, sectionLater, sectionSomeday, sectionDone,
+	sectionOverdue, sectionToday, sectionThisWeek, sectionLater, sectionSomeday, sectionWaiting, sectionDone,
 }
 
 const weekAhead = 7
@@ -31,6 +32,10 @@ const weekAhead = 7
 func sectionOf(t api.Task) string {
 	if t.Status == "done" {
 		return sectionDone
+	}
+	// Everything above waiting is something you could pick up now.
+	if waiting(t) {
+		return sectionWaiting
 	}
 	days, dated := daysUntilDue(t)
 	switch {
@@ -47,14 +52,53 @@ func sectionOf(t api.Task) string {
 	}
 }
 
-// daysUntilDue counts whole days from today to the due date, negative when
+// waiting reports whether an open task cannot be started yet: something it
+// waits on is still open, or its start date has not come.
+func waiting(t api.Task) bool {
+	return t.Status == "open" && (t.Blocked || t.Start > store.Today())
+}
+
+// waitingOn is the ids of what still holds a task up.
+func waitingOn(t api.Task) string {
+	var ids []string
+	for _, d := range t.BlockedBy {
+		if !d.Done {
+			ids = append(ids, fmt.Sprint(d.ID))
+		}
+	}
+	return strings.Join(ids, ", ")
+}
+
+// waitPhrase says why a waiting task cannot be started, or nothing.
+func waitPhrase(t api.Task) string {
+	switch {
+	case t.Status != "open":
+		return ""
+	case t.Blocked:
+		return "waits on " + waitingOn(t)
+	case t.Start > store.Today():
+		return "from " + t.Start
+	}
+	return ""
+}
+
+// deadline is the date the task has to be done by: its own due date, or the
+// earlier one a task waiting on it passed down.
+func deadline(t api.Task) string {
+	if t.EffectiveDue != "" {
+		return t.EffectiveDue
+	}
+	return t.Due
+}
+
+// daysUntilDue counts whole days from today to the deadline, negative when
 // the date has passed. A task with no date, or one the daemon wrote in a
 // shape this build cannot read, is simply undated here.
 func daysUntilDue(t api.Task) (int, bool) {
-	if t.Due == "" {
+	if deadline(t) == "" {
 		return 0, false
 	}
-	due, err := store.ParseDate(t.Due)
+	due, err := store.ParseDate(deadline(t))
 	if err != nil {
 		return 0, false
 	}
@@ -70,6 +114,9 @@ func daysUntilDue(t api.Task) (int, bool) {
 // know the ordering rule.
 func why(t api.Task) string {
 	var parts []string
+	if wait := waitPhrase(t); wait != "" {
+		parts = append(parts, wait)
+	}
 	parts = append(parts, duePhrase(t))
 	if t.Priority != "" && t.Priority != "normal" {
 		parts = append(parts, t.Priority+" priority")
@@ -98,6 +145,14 @@ func why(t api.Task) string {
 }
 
 func duePhrase(t api.Task) string {
+	phrase := dayPhrase(t)
+	if t.EffectiveDue != "" {
+		phrase += fmt.Sprintf(" so %d can follow in time", t.DueFor)
+	}
+	return phrase
+}
+
+func dayPhrase(t api.Task) string {
 	days, dated := daysUntilDue(t)
 	switch {
 	case !dated:

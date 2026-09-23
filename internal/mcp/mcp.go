@@ -36,10 +36,13 @@ func NewServer(svc *todo.Service) *sdk.Server {
 
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "todo_list",
-		Description: "List tasks in ordo's order: overdue first, then by due date with undated last, " +
+		Description: "List tasks in ordo's order: overdue first, then by deadline with undated last, " +
 			"then priority, then difficulty. Open tasks only unless you say otherwise. This is the " +
 			"whole list — read it before answering anything about what to do next, and re-read it " +
-			"rather than remembering it, because the daemon fills fields in asynchronously.",
+			"rather than remembering it, because the daemon fills fields in asynchronously. A task " +
+			"with blocked set is waiting on the open tasks in blocked_by, and one with a start in the " +
+			"future cannot begin yet; neither is planned. A task others wait on carries effective_due, " +
+			"the date it has to be done by for due_for to make its own deadline.",
 		InputSchema: schemaFor[ListArgs](map[string][]any{
 			"status":     {"open", "done", "all"},
 			"difficulty": difficulties,
@@ -53,8 +56,9 @@ func NewServer(svc *todo.Service) *sdk.Server {
 			"model reads it in the background and fills in due date, difficulty, recurrence and " +
 			"priority by itself, so \"put the bins out every tuesday\" becomes a weekly recurring task " +
 			"without you parsing it. Set a field explicitly only when you know something the sentence " +
-			"does not say — whatever you set here is never overwritten by that inference. Returns " +
-			"immediately, before inference has run.",
+			"does not say — whatever you set here is never overwritten by that inference. " +
+			"Dependencies are never inferred: pass blocked_by when I have said this one has to wait " +
+			"for others. Returns immediately, before inference has run.",
 		InputSchema: schemaFor[AddArgs](map[string][]any{
 			"difficulty": difficulties,
 			"priority":   priorities,
@@ -92,7 +96,8 @@ func NewServer(svc *todo.Service) *sdk.Server {
 			"one. Editing priority is expected and welcome: inference only ever fills fields that are " +
 			"empty, so it will not quietly undo you. A new title re-runs inference over the new " +
 			"sentence, which fills anything still empty — to have it reconsider a field it already " +
-			"wrote, clear that field here first.",
+			"wrote, clear that field here first. blocked_by replaces the whole list of what the task " +
+			"waits on, so read it first when adding one.",
 		InputSchema: schemaFor[SetArgs](map[string][]any{
 			"status":     append(statuses, nil),
 			"difficulty": append(append([]any{""}, difficulties...), nil),

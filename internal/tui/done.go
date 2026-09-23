@@ -78,6 +78,9 @@ func complete(c *client.Client, id int64, minutes int) (string, error) {
 	if t.Status == "open" {
 		note += " — next one " + t.Due
 	}
+	if waits := waitingOn(*t); waits != "" && t.Status == "done" {
+		note += " — it was waiting on " + waits
+	}
 	return note, nil
 }
 
