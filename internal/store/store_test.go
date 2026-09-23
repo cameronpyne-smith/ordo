@@ -366,3 +366,26 @@ func TestIDsAreNotReused(t *testing.T) {
 		t.Fatalf("next id = %d, want 4: id 3 was reused", next.ID)
 	}
 }
+
+func TestReadDateTakesAUKDate(t *testing.T) {
+	for typed, want := range map[string]string{
+		"2026-09-25": "2026-09-25",
+		"25-09-26":   "2026-09-25",
+		"25/09/26":   "2026-09-25",
+		"25/9/26":    "2026-09-25",
+		"5.1.27":     "2027-01-05",
+		"25/09/2026": "2026-09-25",
+		" 25-09-26 ": "2026-09-25",
+		"":           "",
+	} {
+		got, err := ReadDate(typed)
+		if err != nil || got != want {
+			t.Errorf("ReadDate(%q) = %q, %v; want %q", typed, got, err, want)
+		}
+	}
+	for _, typed := range []string{"09/25/26", "31-02-26", "tomorrow", "25-09"} {
+		if got, err := ReadDate(typed); !errors.Is(err, ErrInvalid) {
+			t.Errorf("ReadDate(%q) = %q, %v; want it refused", typed, got, err)
+		}
+	}
+}

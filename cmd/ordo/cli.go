@@ -82,6 +82,9 @@ func newAddCmd(configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if req.Due, err = store.ReadDate(req.Due); err != nil {
+				return err
+			}
 			req.Title = strings.Join(args, " ")
 			t, err := c.Create(req)
 			if err != nil {
@@ -92,7 +95,7 @@ func newAddCmd(configPath *string) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&req.Notes, "notes", "", "a one-liner worth keeping with the task")
-	cmd.Flags().StringVar(&req.Due, "due", "", "due date, YYYY-MM-DD")
+	cmd.Flags().StringVar(&req.Due, "due", "", "due date, 25/09/26 or 2026-09-25")
 	cmd.Flags().StringVar(&req.Difficulty, "difficulty", "", "low, medium or high")
 	cmd.Flags().StringVar(&req.Priority, "priority", "", "low, normal or high")
 	cmd.Flags().IntVar(&req.EstimateMinutes, "estimate", 0, "estimated minutes")
@@ -333,7 +336,11 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 		case "priority":
 			req.Priority = &value
 		case "due":
-			req.Due = &value
+			due, err := store.ReadDate(value)
+			if err != nil {
+				return req, err
+			}
+			req.Due = &due
 		case "every", "after":
 			kind := key
 			if value == "" {

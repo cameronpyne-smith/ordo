@@ -225,6 +225,27 @@ func validDue(due string) error {
 	return nil
 }
 
+// typedDates are the ways a date is written by hand in the UK: day first,
+// with dashes, slashes or dots, and a two- or four-digit year. The stored
+// form is tried first, so an ISO date is never read as anything else.
+var typedDates = []string{DateFormat, "2-1-06", "2/1/06", "2.1.06", "2-1-2006", "2/1/2006", "2.1.2006"}
+
+// ReadDate turns a date someone typed into the stored form. It belongs to
+// the surfaces a person types into; the API itself only ever takes
+// YYYY-MM-DD, so there is one form on the wire and in the database.
+func ReadDate(typed string) (string, error) {
+	typed = strings.TrimSpace(typed)
+	if typed == "" {
+		return "", nil
+	}
+	for _, layout := range typedDates {
+		if t, err := time.ParseInLocation(layout, typed, Location); err == nil {
+			return t.Format(DateFormat), nil
+		}
+	}
+	return "", fmt.Errorf("%q is not a date: write it as 25/09/26 or 2026-09-25: %w", typed, ErrInvalid)
+}
+
 // ParseDate reads a plain calendar date in Location.
 func ParseDate(date string) (time.Time, error) {
 	return time.ParseInLocation(DateFormat, date, Location)

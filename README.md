@@ -62,7 +62,7 @@ token  = "..."
 ordo                             # the terminal view
 ordo add "Put the bins out" --every "weekly on tue" --difficulty low
 ordo add "Water the plants" --after 3d
-ordo add "Send the CV" --due 2026-09-25 --priority high
+ordo add "Send the CV" --due 25/09/26 --priority high   # or 2026-09-25
 ordo list                        # open tasks, in order
 ordo list --overdue --limit 5
 ordo list --recurring

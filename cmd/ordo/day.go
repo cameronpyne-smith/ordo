@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
+	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
 func newTodayCmd(configPath *string) *cobra.Command {
@@ -24,6 +25,9 @@ func newTodayCmd(configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if day, err = store.ReadDate(day); err != nil {
+				return err
+			}
 			plan, err := c.Today(day)
 			if err != nil {
 				return err
@@ -32,7 +36,7 @@ func newTodayCmd(configPath *string) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&day, "day", "", "the day to plan, YYYY-MM-DD (default today)")
+	cmd.Flags().StringVar(&day, "day", "", "the day to plan, 25/09/26 or 2026-09-25 (default today)")
 	cmd.Flags().BoolVar(&why, "why", false, "show the reason for each block and what did not fit")
 	return cmd
 }
@@ -136,6 +140,9 @@ func newPinCmd(configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if day, err = store.ReadDate(day); err != nil {
+				return err
+			}
 			t, err := c.Pin(id, day)
 			if err != nil {
 				return err
@@ -144,7 +151,7 @@ func newPinCmd(configPath *string) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&day, "day", "", "the day to pin it to, YYYY-MM-DD (default today)")
+	cmd.Flags().StringVar(&day, "day", "", "the day to pin it to, 25/09/26 or 2026-09-25 (default today)")
 	return cmd
 }
 

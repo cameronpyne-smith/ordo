@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
+	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
 // The two enums a task is triaged with. Both are short enough that a key
@@ -182,7 +183,11 @@ func editRequest(name, value string) (api.EditRequest, error) {
 	var req api.EditRequest
 	switch name {
 	case "due":
-		req.Due = &value
+		due, err := store.ReadDate(value)
+		if err != nil {
+			return req, err
+		}
+		req.Due = &due
 	case "priority":
 		req.Priority = &value
 	case "difficulty":

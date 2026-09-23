@@ -104,6 +104,29 @@ func TestEditRequestReadsEachField(t *testing.T) {
 	}
 }
 
+func TestDueIsReadTheWayItIsTyped(t *testing.T) {
+	req, err := editRequest("due", "25-09-26")
+	if err != nil || *req.Due != "2026-09-25" {
+		t.Fatalf("due = %v, %v; want 2026-09-25", req.Due, err)
+	}
+	if _, err := editRequest("due", "next week"); err == nil {
+		t.Error("a due date that is not a date was sent")
+	}
+}
+
+// A long error on a narrow terminal is the one thing the footer must not
+// drop: it is the only place the edit pane says an edit was refused.
+func TestFooterKeepsTheErrorWhenItDoesNotFit(t *testing.T) {
+	msg := `"25-09-26x" is not a date: write it as 25/09/26 or 2026-09-25: invalid`
+	got := pad(strings.Repeat("k", 80), msg, 100)
+	if !strings.HasSuffix(got, msg) {
+		t.Fatalf("footer = %q, want the whole error at its end", got)
+	}
+	if w := len(got); w != 100 {
+		t.Errorf("footer is %d wide, want 100", w)
+	}
+}
+
 func TestEnterOpensTheTaskUnderTheCursor(t *testing.T) {
 	m := New(nil)
 	m = m.applyTasks(tasksMsg{resp: &api.ListResponse{Tasks: []api.Task{

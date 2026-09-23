@@ -282,8 +282,9 @@ func (m Model) help() string {
 		headingStyle.Render("changing a task"),
 		"  enter opens the task. Inside it p and d cycle priority and difficulty,",
 		"  shift steps back, and u m r n t open a prefilled line for the due date,",
-		"  estimate, repeat rule, notes and title. Every press saves; an empty",
-		"  value clears the field. esc returns to the list.",
+		"  estimate, repeat rule, notes and title. A date is day first, 25/09/26,",
+		"  or 2026-09-25. Every press saves; an empty value clears the field.",
+		"  esc returns to the list.",
 		"",
 		headingStyle.Render("the day"),
 		"  t   the day view: what fits in today's free time, each block placed",
@@ -303,12 +304,19 @@ func rule(width int) string { return ruleStyle.Render(strings.Repeat("─", widt
 
 // pad puts right hard against the right edge, given that both sides may
 // carry escape sequences that do not take up space.
+// pad puts the status at the right edge. When the two do not fit, the key
+// hints give way: they are always the same and there is a help screen for
+// them, where the status is the only place an error is ever said.
 func pad(left, right string, width int) string {
-	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
+	if right == "" {
 		return truncate(left, width)
 	}
-	return left + strings.Repeat(" ", gap) + right
+	room := width - lipgloss.Width(right) - 1
+	if room < 1 {
+		return truncate(right, width)
+	}
+	left = truncate(left, room)
+	return left + strings.Repeat(" ", width-lipgloss.Width(left)-lipgloss.Width(right)) + right
 }
 
 func truncate(s string, width int) string {
