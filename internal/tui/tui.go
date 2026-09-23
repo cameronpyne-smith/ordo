@@ -8,6 +8,7 @@ package tui
 import (
 	"time"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -37,6 +38,7 @@ const (
 	modeEdit
 	modeField
 	modeTook
+	modeNotes
 )
 
 // The filters are the whole of the TUI's cleverness, deliberately: each one
@@ -82,9 +84,11 @@ type Model struct {
 	day       *api.TodayResponse
 	dayCursor int
 
-	edit     api.Task
-	field    string
-	helpFrom mode
+	edit       api.Task
+	field      string
+	helpFrom   mode
+	notes      textarea.Model
+	noteScroll int
 
 	took     api.Task
 	tookFrom mode
@@ -100,7 +104,7 @@ func New(c *client.Client) Model {
 	in := textinput.New()
 	in.Placeholder = addPlaceholder
 	in.CharLimit = 500
-	return Model{client: c, input: in}
+	return Model{client: c, input: in, notes: newNotesEditor()}
 }
 
 func Run(c *client.Client) error {
@@ -149,6 +153,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if m.mode == modeNotes {
+			m = m.sizeNotes()
+		}
 		return m, nil
 
 	case tickMsg:
@@ -223,7 +230,7 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 	m.cursor = clampToTask(m.rows, m.cursor)
 	// An open task keeps up with the model: a field filled in behind the
 	// pane appears in it rather than waiting for it to be reopened.
-	if m.mode == modeEdit || m.mode == modeField {
+	if m.mode == modeEdit || m.mode == modeField || m.mode == modeNotes {
 		for _, t := range msg.resp.Tasks {
 			if t.ID == m.edit.ID {
 				m.edit = t
@@ -281,6 +288,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyField(msg)
 	case modeTook:
 		return m.keyTook(msg)
+	case modeNotes:
+		return m.keyNotes(msg)
 	case modeHelp:
 		m.mode, m.helpFrom = m.helpFrom, modeList
 		return m, nil
@@ -340,7 +349,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		m.mode, m.edit, m.message = modeEdit, t, ""
+		m.mode, m.edit, m.message, m.noteScroll = modeEdit, t, "", 0
 	case "t":
 		m.mode, m.message = modeDay, ""
 		return m, m.fetchDay()

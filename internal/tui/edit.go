@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/store"
@@ -46,7 +45,7 @@ var fields = []field{
 	{"difficulty", "d", func(t api.Task) string { return t.Difficulty }, nil},
 	{"estimate", "m", showEstimate, textEstimate},
 	{"repeats", "r", showRepeats, textRepeats},
-	{"notes", "n", func(t api.Task) string { return t.Notes }, func(t api.Task) string { return t.Notes }},
+	{"notes", "n", func(t api.Task) string { return preview(t.Notes) }, func(t api.Task) string { return t.Notes }},
 	{"title", "t", func(t api.Task) string { return t.Title }, func(t api.Task) string { return t.Title }},
 }
 
@@ -98,6 +97,12 @@ func (m Model) keyEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.cycleField("difficulty", difficulties, m.edit.Difficulty, 1)
 	case "D":
 		return m.cycleField("difficulty", difficulties, m.edit.Difficulty, -1)
+	case "n":
+		return m.openNotes()
+	case "j", "down":
+		return m.scrollNotes(1), nil
+	case "k", "up":
+		return m.scrollNotes(-1), nil
 	}
 	for _, f := range fields {
 		if f.key == msg.String() && !f.enum() {
@@ -229,15 +234,11 @@ func editRequest(name, value string) (api.EditRequest, error) {
 	return req, nil
 }
 
-func (m Model) editView(width, height int) string {
-	header := m.editHeader(width)
-	footer := m.editFooter(width)
-	body := m.editBody(width)
-	gap := height - lipgloss.Height(header) - lipgloss.Height(body) - lipgloss.Height(footer)
-	if gap < 0 {
-		gap = 0
-	}
-	return strings.Join([]string{header, body + strings.Repeat("\n", gap), footer}, "\n")
+func (m Model) editView() string {
+	width, room := m.noteArea()
+	parts := []string{m.editHeader(width), m.editBody(width)}
+	parts = append(parts, m.fullNotes(width, room)...)
+	return strings.Join(append(parts, m.editFooter(width)), "\n")
 }
 
 func (m Model) editHeader(width int) string {
@@ -277,6 +278,9 @@ func (m Model) editBody(width int) string {
 func (m Model) editFooter(width int) string {
 	if m.mode == modeField {
 		return rule(width) + "\n" + m.field + ": " + m.input.View()
+	}
+	if m.mode == modeNotes {
+		return rule(width) + "\n" + faintStyle.Render("enter new line · ctrl+s save · esc discard")
 	}
 	status := m.message
 	if m.failure != "" {

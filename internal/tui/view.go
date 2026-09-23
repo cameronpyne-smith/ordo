@@ -28,19 +28,15 @@ func (m Model) View() string {
 	if m.mode == modeHelp {
 		return m.help()
 	}
-	width := m.width
-	if width < 40 {
-		width = 80
-	}
-	height := m.height
-	if height < 10 {
-		height = 24
-	}
+	width, height := m.size()
 	if m.mode == modeDay || m.mode == modeTook && m.tookFrom == modeDay {
 		return m.dayView(width, height)
 	}
 	if m.mode == modeEdit || m.mode == modeField {
-		return m.editView(width, height)
+		return m.editView()
+	}
+	if m.mode == modeNotes {
+		return m.notesView(width, height)
 	}
 
 	header := m.header(width)
@@ -52,6 +48,18 @@ func (m Model) View() string {
 		listHeight = 3
 	}
 	return strings.Join([]string{header, m.list(width, listHeight), detail, footer}, "\n")
+}
+
+// size is the terminal, or a usable default before the first size message.
+func (m Model) size() (int, int) {
+	width, height := m.width, m.height
+	if width < 40 {
+		width = 80
+	}
+	if height < 10 {
+		height = 24
+	}
+	return width, height
 }
 
 func (m Model) header(width int) string {
@@ -162,7 +170,7 @@ func (m Model) detail(width int) string {
 	third := ""
 	switch {
 	case t.Notes != "":
-		third = t.Notes
+		third = preview(t.Notes)
 	case t.Mnemo != nil:
 		third = "[[" + t.Mnemo.Slug + "]] " + t.Mnemo.Title
 	}
@@ -285,9 +293,11 @@ func (m Model) help() string {
 		"",
 		headingStyle.Render("changing a task"),
 		"  enter opens the task. Inside it p and d cycle priority and difficulty,",
-		"  shift steps back, and u m r n t open a prefilled line for the due date,",
-		"  estimate, repeat rule, notes and title. A date is day first, 25/09/26,",
-		"  or 2026-09-25. Every press saves; an empty value clears the field.",
+		"  shift steps back, and u m r t open a prefilled line for the due date,",
+		"  estimate, repeat rule and title. A date is day first, 25/09/26, or",
+		"  2026-09-25. Every press saves; an empty value clears the field.",
+		"  A note too long for its row is shown whole underneath, j k to scroll.",
+		"  n edits it over several lines: enter starts a new line, ctrl+s saves.",
 		"  esc returns to the list.",
 		"",
 		headingStyle.Render("the day"),

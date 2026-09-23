@@ -255,6 +255,11 @@ prefilled with what is already there, because a due date is nearly always a
 correction rather than a retype. Each press saves, and the pane redraws from
 what the daemon stored rather than from what was typed.
 
+Notes are the exception, having no natural length. A note too long for its
+row is shown whole under the fields, wrapped, with `j` and `k` to scroll it,
+and `n` opens it in an editor of several lines: enter starts a new line,
+ctrl+s saves and esc discards.
+
 ```
 ordo · #3
 ────────────────────────────────────────────────────────────────────────────
