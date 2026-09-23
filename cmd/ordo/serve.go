@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -23,7 +25,37 @@ import (
 	"github.com/cameronpyne-smith/ordo/internal/todo"
 )
 
-const backupsKept = 30
+const (
+	backupsKept   = 30
+	shutdownGrace = 10 * time.Second
+)
+
+// serveHTTP answers on ln until ctx is cancelled, then stops taking requests
+// and gives the ones in flight grace to finish. Every request's context ends
+// when shutdown starts: a connected Claude session holds an MCP event stream
+// open for as long as it lives, and Shutdown alone would wait out the whole
+// grace period on it and then fail.
+func serveHTTP(ctx context.Context, ln net.Listener, handler http.Handler, grace time.Duration, log *slog.Logger) error {
+	requests, endRequests := context.WithCancel(context.Background())
+	defer endRequests()
+	srv := &http.Server{
+		Handler:     handler,
+		BaseContext: func(net.Listener) context.Context { return requests },
+	}
+	srv.RegisterOnShutdown(endRequests)
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.Serve(ln) }()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		log.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), grace)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	}
+}
 
 func newServeCmd(configPath *string) *cobra.Command {
 	return &cobra.Command{
@@ -59,7 +91,7 @@ func newServeCmd(configPath *string) *cobra.Command {
 				log.Warn("no token set — the API is unauthenticated")
 			}
 
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
 			if cfg.BackupDir != "" {
@@ -86,27 +118,17 @@ func newServeCmd(configPath *string) *cobra.Command {
 				Log:      log,
 			})
 			go publisher.Run(ctx, svc)
-			srv := &http.Server{Addr: cfg.Bind, Handler: server.New(server.Options{
+			ln, err := net.Listen("tcp", cfg.Bind)
+			if err != nil {
+				return err
+			}
+			log.Info("listening", "addr", cfg.Bind, "mcp", "/mcp")
+			return serveHTTP(ctx, ln, server.New(server.Options{
 				Todo:  svc,
 				Token: cfg.Token,
 				MCP:   mcp.Handler(svc, log),
 				Log:   log,
-			})}
-			errCh := make(chan error, 1)
-			go func() {
-				log.Info("listening", "addr", cfg.Bind, "mcp", "/mcp")
-				errCh <- srv.ListenAndServe()
-			}()
-
-			select {
-			case err := <-errCh:
-				return err
-			case <-ctx.Done():
-				log.Info("shutting down")
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				return srv.Shutdown(shutdownCtx)
-			}
+			}), shutdownGrace, log)
 		},
 	}
 }
