@@ -71,7 +71,7 @@ func (m Model) keyLeft(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode, m.working, m.failure = m.tookFrom, false, ""
 		m.input.Blur()
 		id, minutes := m.took.ID, m.worked
-		return m, m.logged(func(c *client.Client) (string, error) { return work(c, id, minutes, left) })
+		return m, m.logged(func(c *client.Client) (string, int64, error) { return work(c, id, minutes, left) })
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
@@ -90,40 +90,42 @@ func readLeft(value string) (*int, error) {
 	return &n, nil
 }
 
-func work(c *client.Client, id int64, minutes int, left *int) (string, error) {
+func work(c *client.Client, id int64, minutes int, left *int) (string, int64, error) {
 	t, err := c.Work(id, minutes, left)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	spent := "logged"
 	if minutes > 0 {
 		spent = fmt.Sprintf("%d min logged", minutes)
 	}
 	if t.Status == "done" {
+		note := "done"
 		if minutes > 0 {
-			return fmt.Sprintf("done in %d min", minutes), nil
+			note = fmt.Sprintf("done in %d min", minutes)
 		}
-		return "done", nil
+		return said(note, t.Outcome), t.ID, nil
 	}
-	return fmt.Sprintf("%s — %d left", spent, t.RemainingMinutes), nil
+	return fmt.Sprintf("%s — %d left", spent, t.RemainingMinutes), 0, nil
 }
 
 // logged sends a completion or a session and refreshes whichever view it was
-// asked from, since either can reshape the rest of the day.
-func (m Model) logged(do func(*client.Client) (string, error)) tea.Cmd {
+// asked from, since either can reshape the rest of the day. A task finished
+// comes back named, so its row can be seen off.
+func (m Model) logged(do func(*client.Client) (string, int64, error)) tea.Cmd {
 	c := m.client
 	if m.tookFrom == modeDay {
 		return func() tea.Msg {
-			note, err := do(c)
+			note, finished, err := do(c)
 			if err != nil {
 				return dayMsg{err: err}
 			}
 			resp, err := c.Today("")
-			return dayActedMsg{note: note, resp: resp, err: err}
+			return dayActedMsg{note: note, finished: finished, resp: resp, err: err}
 		}
 	}
 	return func() tea.Msg {
-		note, err := do(c)
-		return actedMsg{note: note, err: err}
+		note, finished, err := do(c)
+		return actedMsg{note: note, finished: finished, err: err}
 	}
 }

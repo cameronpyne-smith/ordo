@@ -124,6 +124,12 @@ type Task struct {
 	Blocks       []Dep
 	EffectiveDue string
 	DueFor       int64
+
+	// Streak is how many of a repeating task's occurrences in a row were done
+	// on time, read alongside it. Outcome is set only on what finishing it,
+	// or taking that back, returns.
+	Streak  int
+	Outcome *Outcome
 }
 
 // Dep is one end of a dependency, named so a view can say what is being

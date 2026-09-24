@@ -24,12 +24,18 @@ type dayMsg struct {
 // the calendar already had. Both are drawn in time order, because that is how
 // the day happens.
 type entry struct {
-	start  string
-	end    string
-	block  *api.Block
-	busy   *api.Busy
-	pinned bool
+	start   string
+	end     string
+	block   *api.Block
+	busy    *api.Busy
+	pinned  bool
+	heading string
+	logged  *api.Logged
 }
+
+// selectable is a line a key can act on: a block, or something already done
+// today, which can be opened.
+func (e entry) selectable() bool { return e.block != nil || e.logged != nil }
 
 func (m Model) fetchDay() tea.Cmd {
 	c := m.client
@@ -59,15 +65,36 @@ func dayEntries(plan *api.TodayResponse) []entry {
 			out[j], out[j-1] = out[j-1], out[j]
 		}
 	}
+	// What is already done goes at the foot rather than into the timeline:
+	// the plan is only ever what is left, and this is the record of the rest.
+	if len(plan.Done) > 0 {
+		out = append(out, entry{heading: "done today"})
+		for i := range plan.Done {
+			out = append(out, entry{start: plan.Done[i].At, logged: &plan.Done[i]})
+		}
+	}
 	return out
 }
 
-func (m Model) dayCursorTask() (api.Task, bool) {
+// dayCursorBlock is the block under the cursor, unless it is on its way out.
+func (m Model) dayCursorBlock() (*api.Block, bool) {
 	entries := dayEntries(m.day)
-	if m.dayCursor < 0 || m.dayCursor >= len(entries) || entries[m.dayCursor].block == nil {
+	if m.dayCursor < 0 || m.dayCursor >= len(entries) {
+		return nil, false
+	}
+	b := entries[m.dayCursor].block
+	if b == nil || b.Task.ID == m.leaving {
+		return nil, false
+	}
+	return b, true
+}
+
+func (m Model) dayCursorTask() (api.Task, bool) {
+	b, ok := m.dayCursorBlock()
+	if !ok {
 		return api.Task{}, false
 	}
-	return entries[m.dayCursor].block.Task, true
+	return b.Task, true
 }
 
 func (m Model) keyDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -95,13 +122,19 @@ func (m Model) keyDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.askTook(t, modeDay)
 	case "w":
-		entries := dayEntries(m.day)
-		if m.dayCursor >= len(entries) || entries[m.dayCursor].block == nil {
+		b, ok := m.dayCursorBlock()
+		if !ok {
 			return m, nil
 		}
-		b := entries[m.dayCursor].block
 		return m.askWorked(b.Task, b.Minutes, modeDay)
 	case "enter":
+		if m.dayCursor < len(entries) && entries[m.dayCursor].logged != nil {
+			c, id := m.client, entries[m.dayCursor].logged.ID
+			return m, func() tea.Msg {
+				t, err := c.Get(id)
+				return openedMsg{task: t, err: err}
+			}
+		}
 		t, ok := m.dayCursorTask()
 		if !ok {
 			return m, nil
@@ -135,14 +168,15 @@ func (m Model) actOnDay(do func(*client.Client, int64) (string, error)) (tea.Mod
 }
 
 type dayActedMsg struct {
-	note string
-	resp *api.TodayResponse
-	err  error
+	note     string
+	finished int64
+	resp     *api.TodayResponse
+	err      error
 }
 
 func stepDay(entries []entry, from, step int) int {
 	for i := from + step; i >= 0 && i < len(entries); i += step {
-		if entries[i].block != nil {
+		if entries[i].selectable() {
 			return i
 		}
 	}
@@ -159,10 +193,10 @@ func clampDay(entries []entry, want int) int {
 	if want < 0 {
 		want = 0
 	}
-	if entries[want].block != nil {
+	if entries[want].selectable() {
 		return want
 	}
-	if next := stepDay(entries, want, 1); entries[next].block != nil {
+	if next := stepDay(entries, want, 1); entries[next].selectable() {
 		return next
 	}
 	return stepDay(entries, want, -1)
@@ -185,6 +219,9 @@ func (m Model) dayHeader(width int) string {
 	}
 	left := "ordo · " + m.day.Date
 	right := fmt.Sprintf("%d of %d min planned", m.day.PlannedMinutes, m.day.BudgetMinutes)
+	if m.day.Tally != nil {
+		right = fmt.Sprintf("%s · %d of %d min still planned", m.day.Tally.Said(), m.day.PlannedMinutes, m.day.BudgetMinutes)
+	}
 	return pad(left, right, width) + "\n" + rule(width)
 }
 
@@ -219,6 +256,12 @@ func (m Model) dayRow(e entry, selected bool, width int) string {
 	if selected {
 		marker = "▸ "
 	}
+	if e.heading != "" {
+		return headingStyle.Render(e.heading)
+	}
+	if e.logged != nil {
+		return m.loggedRow(*e.logged, marker, selected, width)
+	}
 	span := faintStyle.Render(fmt.Sprintf("%s-%s", e.start, e.end))
 	if e.busy != nil {
 		what := e.busy.Summary
@@ -226,6 +269,9 @@ func (m Model) dayRow(e entry, selected bool, width int) string {
 			what = "busy"
 		}
 		return truncate("  "+span+" "+brokenStyle.Render(what), width)
+	}
+	if e.block.Task.ID == m.leaving {
+		return truncate(doneStyle.Render(fmt.Sprintf("✓ %s-%s %s", e.start, e.end, e.block.Task.Title)), width)
 	}
 	title := e.block.Task.Title
 	if e.pinned {
@@ -245,16 +291,56 @@ func (m Model) dayRow(e entry, selected bool, width int) string {
 	return line + suffix
 }
 
+// loggedRow is one thing already done today: ticked when it was finished,
+// plain for a session of work.
+func (m Model) loggedRow(l api.Logged, marker string, selected bool, width int) string {
+	mark := "✓"
+	if l.Partial {
+		mark = " "
+	}
+	suffix := faintStyle.Render("  " + loggedLength(l))
+	prefix := marker + faintStyle.Render(mark+" "+l.At) + "       "
+	room := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
+	line := prefix + faintStyle.Render(truncate(l.Title, max(room, 12)))
+	if selected {
+		line = marker + selectStyle.Render(mark+" "+l.At+"       "+truncate(l.Title, max(room, 12)))
+	}
+	return line + suffix
+}
+
+func loggedLength(l api.Logged) string {
+	length := ""
+	if l.Minutes > 0 {
+		length = api.Hours(l.Minutes)
+	}
+	if l.Partial {
+		return strings.TrimSpace("worked " + length)
+	}
+	return length
+}
+
 // dayDetail is the same promise the list makes: the line under the day says
 // why the selected block is where it is.
 func (m Model) dayDetail(width int) string {
 	lines := []string{rule(width)}
 	entries := dayEntries(m.day)
-	if m.dayCursor < len(entries) && entries[m.dayCursor].block != nil {
+	switch {
+	case m.dayCursor < len(entries) && entries[m.dayCursor].block != nil:
 		b := entries[m.dayCursor].block
 		lines = append(lines, truncate(selectStyle.Render(b.Task.Title), width))
 		lines = append(lines, truncate(faintStyle.Render(b.Reason), width))
-	} else {
+	case m.dayCursor < len(entries) && entries[m.dayCursor].logged != nil:
+		l := entries[m.dayCursor].logged
+		what := "done at " + l.At
+		if l.Partial {
+			what = "worked on at " + l.At
+		}
+		if l.Minutes > 0 {
+			what += " · " + api.Hours(l.Minutes)
+		}
+		lines = append(lines, truncate(selectStyle.Render(l.Title), width))
+		lines = append(lines, truncate(faintStyle.Render(what), width))
+	default:
 		lines = append(lines, "", "")
 	}
 	return strings.Join(lines, "\n")

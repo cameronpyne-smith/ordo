@@ -294,7 +294,19 @@ left less the time just spent. Enter keeps it; a number says the job turned
 out bigger or smaller than that, since time spent is not progress; 0 means
 it is finished after all. `d` always finishes and `w` never does, and `u`
 takes back whichever was last. A repeating task is done in one go, so `w`
-refuses one. A quick win is anything with half an hour or less to go,
+refuses one.
+
+Finishing a task says what it changed, and the CLI and Claude hear the same
+thing: the tasks that were waiting on it and can start now, or from their
+start date; for a repeating task, how many occurrences in a row were done on
+time, and what run a late one ended once it was five or more; "that closes a
+chain of 4" when the last task of a line of dependencies is done; and
+"that's everything for [[note]]" when the last of two or more one-off tasks
+linked to a note is. Undo names what waits again. In the terminal the row
+stays a moment, green and struck through, and the cursor then takes the row
+that slid into its place, even when a repeating task has moved on down the
+list. The header counts what today has got done and every minute logged on
+it, sessions included, and so does `ordo list`. A quick win is anything with half an hour or less to go,
 whatever its difficulty, including the last stretch of a big task; with no
 estimate at all, only low difficulty counts. `l` opens what mnemo knows about the selected task — the note and its
 neighbourhood if it is linked, the notes it could point at if it is not, or
@@ -364,7 +376,8 @@ up with it, so a field the model fills in appears without reopening it.
 work and whatever the calendar says is taken, and fills what is left from the
 list in the daemon's own order. A plan for today starts from now, rounded up
 to the next five minutes: asked at three in the afternoon, it does not put
-anything at seven in the morning.
+anything at seven in the morning. What the day has already got done is
+listed under the plan, since the plan is only ever what is left of it.
 
 ```
 $ ordo today --why

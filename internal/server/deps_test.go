@@ -43,3 +43,23 @@ func TestDependenciesOverHTTP(t *testing.T) {
 		t.Fatalf("task = %+v, want an empty list to clear it", got)
 	}
 }
+
+// What finishing a task changed comes back with it, and the list carries
+// what today has got done.
+func TestDoneSaysWhatItChangedOverHTTP(t *testing.T) {
+	h, _, _ := newTestServer(t)
+	var space, sofa api.Task
+	decodeInto(t, request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Make space in office"}), &space)
+	decodeInto(t, request(t, h, http.MethodPost, "/tasks", api.CreateRequest{Title: "Move sofa", BlockedBy: []int64{space.ID}}), &sofa)
+
+	var got api.Task
+	decodeInto(t, request(t, h, http.MethodPost, "/tasks/"+strconv.FormatInt(space.ID, 10)+"/done", api.DoneRequest{Minutes: 40}), &got)
+	if got.Outcome == nil || len(got.Outcome.Freed) != 1 || got.Outcome.Freed[0].ID != sofa.ID {
+		t.Fatalf("outcome = %+v, want the sofa freed", got.Outcome)
+	}
+	var list api.ListResponse
+	decodeInto(t, request(t, h, http.MethodGet, "/tasks", nil), &list)
+	if list.Today == nil || list.Today.Done != 1 || list.Today.Minutes != 40 {
+		t.Fatalf("today = %+v, want one done in 40 minutes", list.Today)
+	}
+}

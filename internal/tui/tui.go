@@ -25,6 +25,10 @@ const (
 	refreshSettled = 30 * time.Second
 )
 
+// A finished task stays where it was, ticked, for long enough to be seen
+// going, rather than vanishing and leaving the rows to jump under the eye.
+const linger = 1200 * time.Millisecond
+
 type mode int
 
 const addPlaceholder = "put the bins out every tuesday"
@@ -76,6 +80,7 @@ type Model struct {
 	client *client.Client
 
 	tasks  []api.Task
+	today  *api.Tally
 	rows   []row
 	cursor int
 	filter int
@@ -110,6 +115,13 @@ type Model struct {
 	failure string
 	pending bool
 
+	// leaving is the task just finished, drawn ticked where it was and no
+	// longer something a key acts on. While it lingers, what comes back from
+	// the daemon waits, the day's in held, and is laid out once it has gone.
+	leaving   int64
+	lingering bool
+	held      *api.TodayResponse
+
 	width, height int
 }
 
@@ -137,13 +149,29 @@ type relatedMsg struct {
 
 // actedMsg is any single-task mutation coming back. The note is what to show
 // in the footer; the list is refetched regardless, because a completion can
-// move a recurring task to a different section.
+// move a recurring task to a different section. finished names a task that
+// has just been completed.
 type actedMsg struct {
-	note string
-	err  error
+	note     string
+	finished int64
+	err      error
 }
 
 type tickMsg time.Time
+
+// leftMsg is a finished task's moment on screen being over.
+type leftMsg struct{}
+
+// openedMsg is a task fetched to be opened, for a row that only names it.
+type openedMsg struct {
+	task *api.Task
+	err  error
+}
+
+func (m Model) seeOff(id int64) (Model, tea.Cmd) {
+	m.leaving, m.lingering = id, true
+	return m, tea.Tick(linger, func(time.Time) tea.Msg { return leftMsg{} })
+}
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.fetch(), tick(refreshPending))
@@ -204,9 +232,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.failure = msg.err.Error()
 			return m, nil
 		}
-		m = m.applyDay(msg.resp, nil)
-		m.message = msg.note
-		return m, nil
+		m.message, m.failure = msg.note, ""
+		if msg.finished != 0 {
+			m.held = msg.resp
+			return m.seeOff(msg.finished)
+		}
+		return m.applyDay(msg.resp, nil), nil
+
+	case leftMsg:
+		m.lingering = false
+		if m.held != nil {
+			m = m.applyDay(m.held, nil)
+			m.held = nil
+		}
+		if m.mode == modeDay {
+			m.leaving = 0
+			return m, nil
+		}
+		return m, m.fetch()
+
+	case openedMsg:
+		if msg.err != nil {
+			m.failure = msg.err.Error()
+			return m, nil
+		}
+		return m.openTask(*msg.task, modeDay), nil
 
 	case editedMsg:
 		if msg.err != nil {
@@ -230,6 +280,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.message, m.failure = msg.note, ""
+		if msg.finished != 0 {
+			return m.seeOff(msg.finished)
+		}
 		return m, m.fetch()
 
 	case tea.KeyMsg:
@@ -239,13 +292,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) applyTasks(msg tasksMsg) Model {
+	if m.lingering {
+		return m
+	}
 	if msg.err != nil {
 		m.failure = msg.err.Error()
 		return m
 	}
 	m.failure = ""
-	m.tasks = msg.resp.Tasks
+	m.tasks, m.today = msg.resp.Tasks, msg.resp.Today
 	m = m.relayout()
+	m.leaving = 0
 	m.pending = false
 	for _, t := range msg.resp.Tasks {
 		if !t.Enriched {
@@ -267,6 +324,9 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 }
 
 func (m Model) applyDay(resp *api.TodayResponse, err error) Model {
+	if m.lingering {
+		return m
+	}
 	if err != nil {
 		m.failure = err.Error()
 		return m
@@ -371,10 +431,13 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		return m.act(func(c *client.Client, id int64) (string, error) {
 			t, err := c.Undo(id)
-			if err == nil && t.RemainingMinutes > 0 {
+			if err != nil {
+				return "", err
+			}
+			if t.RemainingMinutes > 0 {
 				return fmt.Sprintf("undone — %d left", t.RemainingMinutes), nil
 			}
-			return "undone", err
+			return said("undone", t.Outcome), nil
 		})
 	case "e":
 		return m.act(func(c *client.Client, id int64) (string, error) {
@@ -510,8 +573,11 @@ func (m Model) act(do func(*client.Client, int64) (string, error)) (tea.Model, t
 	}
 }
 
+// selected is the task under the cursor. One on its way out is not there to
+// act on, and once it has gone the cursor takes the row that slides into its
+// place, even when it is a repeating task moving on to its next date.
 func (m Model) selected() (api.Task, bool) {
-	if m.cursor < 0 || m.cursor >= len(m.rows) || !m.rows[m.cursor].isTask() {
+	if m.cursor < 0 || m.cursor >= len(m.rows) || !m.rows[m.cursor].isTask() || m.rows[m.cursor].task.ID == m.leaving {
 		return api.Task{}, false
 	}
 	return m.rows[m.cursor].task, true

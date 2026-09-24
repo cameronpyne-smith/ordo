@@ -29,7 +29,13 @@ func (s *Service) Today(ctx context.Context, day string) (api.TodayResponse, err
 	if calErr != nil {
 		message = calErr.Error()
 	}
-	return api.FromDay(plan, s.calendar.Configured(), message), nil
+	logged, err := s.store.LoggedOn(plan.Date)
+	if err != nil {
+		return api.TodayResponse{}, err
+	}
+	out := api.FromDay(plan, s.calendar.Configured(), message)
+	out.Done, out.Tally = api.FromLogged(logged)
+	return out, nil
 }
 
 // Plan is Today before it is shaped for the wire, for the publisher, which

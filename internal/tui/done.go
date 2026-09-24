@@ -47,7 +47,7 @@ func (m Model) keyTook(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode, m.failure = m.tookFrom, ""
 		m.input.Blur()
 		id := m.took.ID
-		return m, m.logged(func(c *client.Client) (string, error) { return complete(c, id, minutes) })
+		return m, m.logged(func(c *client.Client) (string, int64, error) { return complete(c, id, minutes) })
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
@@ -66,10 +66,12 @@ func readTook(value string) (int, error) {
 	return n, nil
 }
 
-func complete(c *client.Client, id int64, minutes int) (string, error) {
+// complete says what finishing the task changed, and names it as the task
+// to see off the screen.
+func complete(c *client.Client, id int64, minutes int) (string, int64, error) {
 	t, err := c.Done(id, minutes)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	note := "done"
 	if minutes > 0 {
@@ -81,7 +83,15 @@ func complete(c *client.Client, id int64, minutes int) (string, error) {
 	if waits := waitingOn(*t); waits != "" && t.Status == "done" {
 		note += " — it was waiting on " + waits
 	}
-	return note, nil
+	return said(note, t.Outcome), t.ID, nil
+}
+
+// said adds what an outcome changed to the footer note.
+func said(note string, o *api.Outcome) string {
+	for _, s := range o.Said() {
+		note += " — " + s
+	}
+	return note
 }
 
 func (m Model) tookFooter(width int) string {

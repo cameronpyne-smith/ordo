@@ -39,7 +39,33 @@ func FromTask(t *store.Task) Task {
 	if t.DoneAt != nil {
 		out.DoneAt = t.DoneAt.Format(time.RFC3339)
 	}
+	out.Streak = t.Streak
+	if o := t.Outcome; o != nil {
+		out.Outcome = &Outcome{Streak: o.Streak, StreakWas: o.StreakWas, Chain: o.Chain,
+			Note: o.Note, NoteDone: o.NoteDone, WaitAgain: fromDeps(o.WaitAgain)}
+		for _, f := range o.Freed {
+			out.Outcome.Freed = append(out.Outcome.Freed, Freed{ID: f.ID, Title: f.Title, Start: f.Start})
+		}
+	}
 	return out
+}
+
+// FromLogged is a day's log for the wire, and the tally it adds up to, which
+// is nil when nothing has been logged.
+func FromLogged(logged []store.Logged) ([]Logged, *Tally) {
+	if len(logged) == 0 {
+		return nil, nil
+	}
+	var tally Tally
+	out := make([]Logged, 0, len(logged))
+	for _, l := range logged {
+		out = append(out, Logged{ID: l.TaskID, Title: l.Title, At: clock(l.At), Minutes: l.Minutes, Partial: l.Partial})
+		tally.Minutes += l.Minutes
+		if !l.Partial {
+			tally.Done++
+		}
+	}
+	return out, &tally
 }
 
 func fromDeps(deps []store.Dep) []Dep {

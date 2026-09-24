@@ -102,7 +102,12 @@ func (s *Service) List(ctx context.Context, f store.Filter) (api.ListResponse, e
 	if f.Linked || f.Note != "" {
 		s.markOrphans(ctx, out)
 	}
-	return api.ListResponse{Tasks: out, Count: len(out)}, nil
+	logged, err := s.store.LoggedOn(store.Today())
+	if err != nil {
+		return api.ListResponse{}, err
+	}
+	_, tally := api.FromLogged(logged)
+	return api.ListResponse{Tasks: out, Count: len(out), Today: tally}, nil
 }
 
 func (s *Service) Get(id int64) (api.Task, error) {

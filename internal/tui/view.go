@@ -17,6 +17,7 @@ var (
 	linkStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	brokenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	doneStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Strikethrough(true)
 	ruleStyle    = lipgloss.NewStyle().Faint(true)
 )
 
@@ -71,6 +72,9 @@ func (m Model) header(width int) string {
 		left += " · " + searchPrompt + m.query + faintStyle.Render("  esc clears")
 	}
 	right := fmt.Sprintf("%d shown", m.countTasks())
+	if m.today != nil {
+		right = m.today.Said() + " today · " + right
+	}
 	return pad(left, right, width) + "\n" + rule(width)
 }
 
@@ -115,6 +119,9 @@ func (m Model) renderRow(i, width int) string {
 		return headingStyle.Render(r.heading)
 	}
 	t := r.task
+	if t.ID == m.leaving {
+		return truncate(doneStyle.Render(fmt.Sprintf("✓ %3d %-10s %s", t.ID, deadline(t), t.Title)), width)
+	}
 
 	marker := "  "
 	if i == m.cursor {
@@ -309,7 +316,11 @@ func (m Model) help() string {
 		"  a   add a task — type the sentence, the daemon reads the rest out of it",
 		"  d   done — asks how long it took, filled in with the estimate: enter",
 		"      keeps it, or type the real minutes, or clear it if you do not know.",
-		"      esc backs out. A recurring task stays open and moves to its next date",
+		"      esc backs out. A recurring task stays open and moves to its next date.",
+		"      The row stays a moment, ticked, and the footer says what finishing it",
+		"      changed: what can start now, the run a repeating task is on, a chain",
+		"      of tasks or everything from a note done. The header counts what",
+		"      today has got done, and the time logged on it",
 		"  w   worked on it, not finished — asks how long, then how much is left,",
 		"      filled in with what was left less that. The day plans what is left,",
 		"      a piece a day when it is more than one sitting. 0 left finishes it",
@@ -338,7 +349,8 @@ func (m Model) help() string {
 		"  t   the day view: what fits in today's free time, each block placed",
 		"      with the reason it landed there. p pins a task to today from the",
 		"      list, and unpins it from the day. enter opens a block's task, and",
-		"      esc comes back to the day. The daemon plans it, not this.",
+		"      esc comes back to the day. The daemon plans it, not this. What is",
+		"      already done today is listed at the foot, and enter opens it too.",
 		"",
 		headingStyle.Render("mnemo"),
 		"  l   the note this task points at, its neighbourhood, or the notes it",

@@ -42,7 +42,9 @@ func NewServer(svc *todo.Service) *sdk.Server {
 			"rather than remembering it, because the daemon fills fields in asynchronously. A task " +
 			"with blocked set is waiting on the open tasks in blocked_by, and one with a start in the " +
 			"future cannot begin yet; neither is planned. A task others wait on carries effective_due, " +
-			"the date it has to be done by for due_for to make its own deadline.",
+			"the date it has to be done by for due_for to make its own deadline. today is what has " +
+			"been finished and how many minutes logged so far today; a repeating task carries streak, " +
+			"its occurrences in a row done on time.",
 		InputSchema: schemaFor[ListArgs](map[string][]any{
 			"status":     {"open", "done", "all"},
 			"difficulty": difficulties,
@@ -71,7 +73,9 @@ func NewServer(svc *todo.Service) *sdk.Server {
 		Description: "Complete a task. A recurring task stays open and its due date advances to the next " +
 			"occurrence; a one-off becomes done. Pass minutes when you know how long it really took, " +
 			"which is what calibrates future estimates. For a session that leaves some still to do, " +
-			"use todo_work.",
+			"use todo_work. outcome says what finishing it changed: tasks freed to start, the streak " +
+			"a repeating task is on or the one it broke, a chain of dependencies or everything linked " +
+			"to a note finished. Tell me those; they are the point of ticking it off.",
 	}, t.done)
 
 	sdk.AddTool(srv, &sdk.Tool{
@@ -87,7 +91,8 @@ func NewServer(svc *todo.Service) *sdk.Server {
 		Name: "todo_undo",
 		Description: "Remove the most recent thing logged against a task: the fix for something ticked " +
 			"off by mistake. A one-off reopens; a recurring task's previous due date comes back; a " +
-			"session from todo_work is taken back and what was left before it returns.",
+			"session from todo_work is taken back and what was left before it returns. " +
+			"outcome.wait_again names the tasks that are held up by it again.",
 	}, t.undo)
 
 	sdk.AddTool(srv, &sdk.Tool{
@@ -133,8 +138,8 @@ func NewServer(svc *todo.Service) *sdk.Server {
 		Description: "Plan a day: the tasks that fit its free time, each placed at a time with the reason " +
 			"it landed there, plus what the calendar has taken, what is left over, and which tasks " +
 			"were considered and did not fit. The plan is computed fresh and never stored, so it is " +
-			"always the current answer rather than a decision someone made earlier. Read this before " +
-			"answering what today looks like.",
+			"always the current answer rather than a decision someone made earlier. done and tally are " +
+			"what the day has already got done. Read this before answering what today looks like.",
 	}, t.today)
 
 	sdk.AddTool(srv, &sdk.Tool{

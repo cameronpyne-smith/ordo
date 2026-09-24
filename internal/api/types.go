@@ -26,6 +26,49 @@ type Task struct {
 	UpdatedAt        string `json:"updated_at"`
 	DoneAt           string `json:"done_at,omitempty"`
 	Enriched         bool   `json:"enriched"`
+	// Streak is how many of a repeating task's occurrences in a row were
+	// done on time. Outcome comes back only from done, work and undo.
+	Streak  int      `json:"streak,omitempty"`
+	Outcome *Outcome `json:"outcome,omitempty"`
+}
+
+// Outcome is what finishing a task, or taking that back, changed beyond the
+// task: what can start now or waits again, the run a repeating task is on
+// and the one it broke, and a chain of tasks or everything linked to a
+// note just finished.
+type Outcome struct {
+	Freed     []Freed `json:"freed,omitempty"`
+	WaitAgain []Dep   `json:"wait_again,omitempty"`
+	Streak    int     `json:"streak,omitempty"`
+	StreakWas int     `json:"streak_was,omitempty"`
+	Chain     int     `json:"chain,omitempty"`
+	Note      string  `json:"note,omitempty"`
+	NoteDone  int     `json:"note_done,omitempty"`
+}
+
+// Freed is a task nothing open holds up any more; Start is set when it is
+// still waiting for its start date.
+type Freed struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	Start string `json:"start,omitempty"`
+}
+
+// Tally is what a day has got done: tasks finished, and every minute logged
+// on it, sessions of work included.
+type Tally struct {
+	Done    int `json:"done"`
+	Minutes int `json:"minutes"`
+}
+
+// Logged is one completion or session of work on a day. At is the time of
+// day it was logged.
+type Logged struct {
+	ID      int64  `json:"id"`
+	Title   string `json:"title"`
+	At      string `json:"at"`
+	Minutes int    `json:"minutes,omitempty"`
+	Partial bool   `json:"partial,omitempty"`
 }
 
 // Dep is the other end of a dependency. EffectiveDue on a task is set only
@@ -133,6 +176,7 @@ type WorkRequest struct {
 type ListResponse struct {
 	Tasks []Task `json:"tasks"`
 	Count int    `json:"count"`
+	Today *Tally `json:"today,omitempty"`
 }
 
 type DeleteResponse struct {
@@ -228,4 +272,6 @@ type TodayResponse struct {
 	BudgetMinutes  int      `json:"budget_minutes"`
 	Calendar       bool     `json:"calendar"`
 	CalendarError  string   `json:"calendar_error,omitempty"`
+	Tally          *Tally   `json:"tally,omitempty"`
+	Done           []Logged `json:"done,omitempty"`
 }

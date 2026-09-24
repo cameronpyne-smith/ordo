@@ -542,39 +542,56 @@ func (t *Task) advanceFrom() string {
 
 // Done records a completion. A one-off task closes; recurrence advances the
 // same row instead, so a recurring task keeps one stable id for its lifetime.
+// What that changed beyond the task comes back as its Outcome.
 func (s *Store) Done(id int64, minutes int) (*Task, error) {
+	before, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.complete(id, minutes); err != nil {
+		return nil, err
+	}
+	after, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	after.Outcome, err = s.doneOutcome(before, after)
+	return after, err
+}
+
+func (s *Store) complete(id int64, minutes int) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return nil, fmt.Errorf("completing task %d: %w", id, err)
+		return fmt.Errorf("completing task %d: %w", id, err)
 	}
 	defer tx.Rollback()
 
 	t, err := getTx(tx, id)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	now := Now()
 	if _, err := tx.Exec(`INSERT INTO completions (task_id, done_at, due, minutes) VALUES (?,?,?,?)`,
 		id, stamp(now), nullStr(t.Due), nullInt(minutes)); err != nil {
-		return nil, fmt.Errorf("completing task %d: %w", id, err)
+		return fmt.Errorf("completing task %d: %w", id, err)
 	}
 	if t.Recurring() {
 		next, err := recur.Next(string(t.RecurKind), t.RecurRule, t.advanceFrom())
 		if err != nil {
-			return nil, fmt.Errorf("completing task %d: %v: %w", id, err, ErrInvalid)
+			return fmt.Errorf("completing task %d: %v: %w", id, err, ErrInvalid)
 		}
 		if _, err := tx.Exec(`UPDATE tasks SET due = ?, done_at = ?, updated_at = ? WHERE id = ?`,
 			next, stamp(now), stamp(now), id); err != nil {
-			return nil, fmt.Errorf("completing task %d: %w", id, err)
+			return fmt.Errorf("completing task %d: %w", id, err)
 		}
 	} else if _, err := tx.Exec(`UPDATE tasks SET status = ?, done_at = ?, updated_at = ? WHERE id = ?`,
 		string(StatusDone), stamp(now), stamp(now), id); err != nil {
-		return nil, fmt.Errorf("completing task %d: %w", id, err)
+		return fmt.Errorf("completing task %d: %w", id, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("completing task %d: %w", id, err)
+		return fmt.Errorf("completing task %d: %w", id, err)
 	}
-	return s.Get(id)
+	return nil
 }
 
 // Work logs a session on a task without finishing it. left is what is still
@@ -640,17 +657,34 @@ func (s *Store) Work(id int64, minutes int, left *int) (*Task, error) {
 
 // Undo removes the most recent thing logged against a task, covering the one
 // mistake that actually happens: a wrong tick. A completion reopens the task;
-// a session of work puts back what was left before it.
+// a session of work puts back what was left before it. What waits on the
+// task again comes back as its Outcome.
 func (s *Store) Undo(id int64) (*Task, error) {
+	before, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.undo(id); err != nil {
+		return nil, err
+	}
+	after, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	after.Outcome, err = s.undoOutcome(before, after)
+	return after, err
+}
+
+func (s *Store) undo(id int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		return fmt.Errorf("undoing task %d: %w", id, err)
 	}
 	defer tx.Rollback()
 
 	t, err := getTx(tx, id)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var completionID int64
 	var completionDue sql.NullString
@@ -660,23 +694,23 @@ func (s *Store) Undo(id int64) (*Task, error) {
 		WHERE task_id = ? ORDER BY done_at DESC, id DESC LIMIT 1`, id).
 		Scan(&completionID, &completionDue, &partial, &remainingBefore)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("task %d has no completion to undo: %w", id, ErrInvalid)
+		return fmt.Errorf("task %d has no completion to undo: %w", id, ErrInvalid)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		return fmt.Errorf("undoing task %d: %w", id, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM completions WHERE id = ?`, completionID); err != nil {
-		return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		return fmt.Errorf("undoing task %d: %w", id, err)
 	}
 	if partial {
 		if _, err := tx.Exec(`UPDATE tasks SET remaining_minutes = ?, updated_at = ? WHERE id = ?`,
 			nullInt(int(remainingBefore.Int64)), stamp(Now()), id); err != nil {
-			return nil, fmt.Errorf("undoing task %d: %w", id, err)
+			return fmt.Errorf("undoing task %d: %w", id, err)
 		}
 		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("undoing task %d: %w", id, err)
+			return fmt.Errorf("undoing task %d: %w", id, err)
 		}
-		return s.Get(id)
+		return nil
 	}
 	var previous any
 	if err := tx.QueryRow(`SELECT done_at FROM completions WHERE task_id = ? AND partial = 0
@@ -684,7 +718,7 @@ func (s *Store) Undo(id int64) (*Task, error) {
 		Scan(&previous); err == sql.ErrNoRows {
 		previous = nil
 	} else if err != nil {
-		return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		return fmt.Errorf("undoing task %d: %w", id, err)
 	}
 	due := any(nullStr(t.Due))
 	if t.Recurring() && completionDue.Valid {
@@ -692,12 +726,12 @@ func (s *Store) Undo(id int64) (*Task, error) {
 	}
 	if _, err := tx.Exec(`UPDATE tasks SET status = ?, done_at = ?, due = ?, updated_at = ? WHERE id = ?`,
 		string(StatusOpen), previous, due, stamp(Now()), id); err != nil {
-		return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		return fmt.Errorf("undoing task %d: %w", id, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("undoing task %d: %w", id, err)
+		return fmt.Errorf("undoing task %d: %w", id, err)
 	}
-	return s.Get(id)
+	return nil
 }
 
 // Delete is permanent and takes the task's completions with it. There is no

@@ -322,6 +322,10 @@ func (m Model) editBody(width int) string {
 	if len(m.edit.Blocks) > 0 {
 		lines = append(lines, depRows(" ", "blocks", m.edit.Blocks, false, width)...)
 	}
+	if m.edit.Streak > 0 {
+		lines = append(lines, truncate("     "+faintStyle.Render(fmt.Sprintf("%-12s", "streak"))+
+			fmt.Sprintf("%d in a row", m.edit.Streak), width))
+	}
 	if m.edit.Mnemo != nil {
 		lines = append(lines, "", truncate("  "+linkStyle.Render("[["+m.edit.Mnemo.Slug+"]]")+
 			faintStyle.Render(" "+m.edit.Mnemo.Title), width))

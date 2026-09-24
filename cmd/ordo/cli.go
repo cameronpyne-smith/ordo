@@ -46,6 +46,9 @@ func newListCmd(configPath *string) *cobra.Command {
 				return err
 			}
 			printTasks(cmd.OutOrStdout(), resp.Tasks)
+			if resp.Today != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "\n%s today\n", resp.Today.Said())
+			}
 			return nil
 		},
 	}
@@ -135,9 +138,10 @@ func newDoneCmd(configPath *string) *cobra.Command {
 			}
 			if t.Recur != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s (next due %s)\n", t.ID, t.Title, t.Due)
-				return nil
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s\n", t.ID, t.Title)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s\n", t.ID, t.Title)
+			printSaid(cmd.OutOrStdout(), t.Outcome)
 			return nil
 		},
 	}
@@ -177,6 +181,7 @@ func newWorkCmd(configPath *string) *cobra.Command {
 			}
 			if t.Status == string(store.StatusDone) {
 				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s\n", t.ID, t.Title)
+				printSaid(cmd.OutOrStdout(), t.Outcome)
 				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "logged %d: %s (%s left)\n", t.ID, t.Title, minutesText(t.RemainingMinutes))
@@ -240,9 +245,10 @@ func newUndoCmd(configPath *string) *cobra.Command {
 			}
 			if t.RemainingMinutes > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "undone %d: %s (%s left)\n", t.ID, t.Title, minutesText(t.RemainingMinutes))
-				return nil
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "undone %d: %s\n", t.ID, t.Title)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "undone %d: %s\n", t.ID, t.Title)
+			printSaid(cmd.OutOrStdout(), t.Outcome)
 			return nil
 		},
 	}
@@ -453,6 +459,13 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 		}
 	}
 	return req, nil
+}
+
+// printSaid puts what a completion changed under it, a line each.
+func printSaid(w io.Writer, o *api.Outcome) {
+	for _, line := range o.Said() {
+		fmt.Fprintf(w, "  %s\n", line)
+	}
 }
 
 func printTasks(w io.Writer, tasks []api.Task) {

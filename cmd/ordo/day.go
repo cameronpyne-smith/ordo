@@ -43,6 +43,9 @@ func newTodayCmd(configPath *string) *cobra.Command {
 
 func printDay(w io.Writer, plan *api.TodayResponse, why bool) {
 	fmt.Fprintf(w, "%s  %d of %d minutes planned\n", plan.Date, plan.PlannedMinutes, plan.BudgetMinutes)
+	if plan.Tally != nil {
+		fmt.Fprintf(w, "%s so far\n", plan.Tally.Said())
+	}
 	if plan.CalendarError != "" {
 		fmt.Fprintf(w, "the calendar could not be read: %s\n", plan.CalendarError)
 	}
@@ -57,6 +60,7 @@ func printDay(w io.Writer, plan *api.TodayResponse, why bool) {
 		fmt.Fprintln(tw, row)
 	}
 	tw.Flush()
+	printLogged(w, plan.Done)
 
 	if !why {
 		return
@@ -79,6 +83,27 @@ func printDay(w io.Writer, plan *api.TodayResponse, why bool) {
 			fmt.Fprintf(w, "  %s-%s  %d min\n", f.Start, f.End, f.Minutes)
 		}
 	}
+}
+
+// printLogged is what the day has already got done, under what is left of
+// it, so the day reads as a whole.
+func printLogged(w io.Writer, logged []api.Logged) {
+	if len(logged) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\ndone today\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, l := range logged {
+		mark, length := "✓", ""
+		if l.Partial {
+			mark, length = " ", "worked "
+		}
+		if l.Minutes > 0 {
+			length += minutesText(l.Minutes)
+		}
+		fmt.Fprintf(tw, "  %s %s\t%4d\t%s\t%s\n", mark, l.At, l.ID, l.Title, strings.TrimSpace(length))
+	}
+	tw.Flush()
 }
 
 // timeline interleaves the blocks with what the calendar already had, so the
@@ -119,15 +144,7 @@ func timeline(plan *api.TodayResponse) []string {
 	return out
 }
 
-func minutesText(n int) string {
-	if n < 60 {
-		return fmt.Sprintf("%d min", n)
-	}
-	if n%60 == 0 {
-		return fmt.Sprintf("%dh", n/60)
-	}
-	return fmt.Sprintf("%dh%02d", n/60, n%60)
-}
+func minutesText(n int) string { return api.Hours(n) }
 
 func newPinCmd(configPath *string) *cobra.Command {
 	var day string
