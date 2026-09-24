@@ -294,7 +294,11 @@ left less the time just spent. Enter keeps it; a number says the job turned
 out bigger or smaller than that, since time spent is not progress; 0 means
 it is finished after all. `d` always finishes and `w` never does, and `u`
 takes back whichever was last. A repeating task is done in one go, so `w`
-refuses one.
+refuses one. A quick win is anything with half an hour or less to go,
+whatever its difficulty, including the last stretch of a big task; with no
+estimate at all, only low difficulty counts. `l` opens what mnemo knows about the selected task — the note and its
+neighbourhood if it is linked, the notes it could point at if it is not, or
+the notes it might have become if its own has been renamed away.
 
 Finishing a task says what it changed, and the CLI and Claude hear the same
 thing: the tasks that were waiting on it and can start now, or from their
@@ -306,11 +310,7 @@ linked to a note is. Undo names what waits again. In the terminal the row
 stays a moment, green and struck through, and the cursor then takes the row
 that slid into its place, even when a repeating task has moved on down the
 list. The header counts what today has got done and every minute logged on
-it, sessions included, and so does `ordo list`. A quick win is anything with half an hour or less to go,
-whatever its difficulty, including the last stretch of a big task; with no
-estimate at all, only low difficulty counts. `l` opens what mnemo knows about the selected task — the note and its
-neighbourhood if it is linked, the notes it could point at if it is not, or
-the notes it might have become if its own has been renamed away.
+it, sessions included, and so does `ordo list`.
 
 `enter` opens the selected task. Priority and difficulty are enums, so `p`
 and `d` cycle them and shift steps back; every other field opens a line
