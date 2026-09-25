@@ -2,9 +2,10 @@ package store
 
 import "sort"
 
-// Sort applies the one ordering the app has: overdue first; then deadline
-// ascending with undated last; then priority; then difficulty, so easy work
-// floats within a tier; then oldest first. The deadline is the due date, or
+// Sort applies the one ordering the app has: a repeating task already done
+// today goes last, since there is nothing left to do on it; then overdue
+// first; then deadline ascending with undated last; then priority; then
+// difficulty, so easy work floats within a tier; then oldest first. The deadline is the due date, or
 // the earlier one a task waiting on this one passed down. Every position is
 // explainable from the fields that produced it, and nothing an LLM decides
 // is persisted here.
@@ -13,6 +14,9 @@ func Sort(tasks []*Task) {
 }
 
 func less(a, b *Task) bool {
+	if a.DoneToday != b.DoneToday {
+		return b.DoneToday
+	}
 	if ao, bo := a.Overdue(), b.Overdue(); ao != bo {
 		return ao
 	}

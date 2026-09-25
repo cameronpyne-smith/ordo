@@ -349,7 +349,7 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 		today := Today()
 		kept := tasks[:0]
 		for _, t := range tasks {
-			if f.Overdue && !t.Overdue() || f.Quick && t.Waiting(today) {
+			if f.Overdue && !t.Overdue() || f.Quick && (t.Waiting(today) || t.DoneToday) {
 				continue
 			}
 			kept = append(kept, t)
@@ -571,6 +571,20 @@ func (s *Store) complete(id int64, minutes int) error {
 		return err
 	}
 	now := Now()
+	// A second completion on the same day would silently take tomorrow's
+	// occurrence, which is almost always a key pressed twice.
+	if t.Recurring() {
+		var today int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM completions
+			WHERE task_id = ? AND partial = 0 AND substr(done_at, 1, 10) = ?`, id, now.Format(DateFormat)).
+			Scan(&today); err != nil {
+			return fmt.Errorf("completing task %d: %w", id, err)
+		}
+		if today > 0 {
+			return fmt.Errorf("task %d is already done for today; the next one is due %s, and undo takes today's back: %w",
+				id, t.Due, ErrInvalid)
+		}
+	}
 	if _, err := tx.Exec(`INSERT INTO completions (task_id, done_at, due, minutes) VALUES (?,?,?,?)`,
 		id, stamp(now), nullStr(t.Due), nullInt(minutes)); err != nil {
 		return fmt.Errorf("completing task %d: %w", id, err)

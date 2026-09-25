@@ -39,7 +39,7 @@ func FromTask(t *store.Task) Task {
 	if t.DoneAt != nil {
 		out.DoneAt = t.DoneAt.Format(time.RFC3339)
 	}
-	out.Streak = t.Streak
+	out.Streak, out.DoneToday = t.Streak, t.DoneToday
 	if o := t.Outcome; o != nil {
 		out.Outcome = &Outcome{Streak: o.Streak, StreakWas: o.StreakWas, Chain: o.Chain,
 			Note: o.Note, NoteDone: o.NoteDone, WaitAgain: fromDeps(o.WaitAgain)}

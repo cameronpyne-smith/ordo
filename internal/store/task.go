@@ -126,10 +126,13 @@ type Task struct {
 	DueFor       int64
 
 	// Streak is how many of a repeating task's occurrences in a row were done
-	// on time, read alongside it. Outcome is set only on what finishing it,
-	// or taking that back, returns.
-	Streak  int
-	Outcome *Outcome
+	// on time, read alongside it. DoneToday is a repeating task whose
+	// occurrence was finished today, so it now waits on its next one.
+	// Outcome is set only on what finishing it, or taking that back,
+	// returns.
+	Streak    int
+	DoneToday bool
+	Outcome   *Outcome
 }
 
 // Dep is one end of a dependency, named so a view can say what is being

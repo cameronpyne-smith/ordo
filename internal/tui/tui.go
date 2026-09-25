@@ -421,6 +421,10 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
+		if t.DoneToday {
+			m.message = fmt.Sprintf("already done today; the next one is due %s · u takes today's back", t.Due)
+			return m, nil
+		}
 		return m.askTook(t, modeList)
 	case "w":
 		t, ok := m.selected()

@@ -20,11 +20,12 @@ const (
 	sectionLater    = "later"
 	sectionSomeday  = "someday"
 	sectionWaiting  = "waiting"
+	sectionDoneDay  = "done today"
 	sectionDone     = "done"
 )
 
 var sectionOrder = []string{
-	sectionOverdue, sectionToday, sectionThisWeek, sectionLater, sectionSomeday, sectionWaiting, sectionDone,
+	sectionOverdue, sectionToday, sectionThisWeek, sectionLater, sectionSomeday, sectionWaiting, sectionDoneDay, sectionDone,
 }
 
 const weekAhead = 7
@@ -32,6 +33,9 @@ const weekAhead = 7
 func sectionOf(t api.Task) string {
 	if t.Status == "done" {
 		return sectionDone
+	}
+	if t.DoneToday {
+		return sectionDoneDay
 	}
 	// Everything above waiting is something you could pick up now.
 	if waiting(t) {

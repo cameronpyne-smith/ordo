@@ -141,6 +141,9 @@ func (m Model) renderRow(i, width int) string {
 	if t.Priority == "high" {
 		title = "! " + title
 	}
+	if t.DoneToday {
+		title = "✓ " + t.Title
+	}
 	// The link and the pending mark are the two things you scan a row for,
 	// so a title too long for the terminal loses its tail rather than
 	// pushing them off the edge.
@@ -148,8 +151,11 @@ func (m Model) renderRow(i, width int) string {
 	suffix := truncate(m.suffix(t), width/2)
 	room := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
 	line := prefix + truncate(title, max(room, 12))
-	if i == m.cursor {
+	switch {
+	case i == m.cursor:
 		line = selectStyle.Render(line)
+	case t.DoneToday:
+		line = prefix + doneStyle.Render(truncate(title, max(room, 12)))
 	}
 	return line + suffix
 }
@@ -316,7 +322,8 @@ func (m Model) help() string {
 		"  a   add a task — type the sentence, the daemon reads the rest out of it",
 		"  d   done — asks how long it took, filled in with the estimate: enter",
 		"      keeps it, or type the real minutes, or clear it if you do not know.",
-		"      esc backs out. A recurring task stays open and moves to its next date.",
+		"      esc backs out. A recurring task stays open and moves to its next date,",
+		"      ticked under done today until tomorrow; it cannot be done twice a day.",
 		"      The row stays a moment, ticked, and the footer says what finishing it",
 		"      changed: what can start now, the run a repeating task is on, a chain",
 		"      of tasks or everything from a note done. The header counts what",

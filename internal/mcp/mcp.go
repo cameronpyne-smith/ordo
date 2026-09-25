@@ -44,7 +44,8 @@ func NewServer(svc *todo.Service) *sdk.Server {
 			"future cannot begin yet; neither is planned. A task others wait on carries effective_due, " +
 			"the date it has to be done by for due_for to make its own deadline. today is what has " +
 			"been finished and how many minutes logged so far today; a repeating task carries streak, " +
-			"its occurrences in a row done on time.",
+			"its occurrences in a row done on time, and done_today once today's is finished; those sort " +
+			"last and cannot be done again until tomorrow.",
 		InputSchema: schemaFor[ListArgs](map[string][]any{
 			"status":     {"open", "done", "all"},
 			"difficulty": difficulties,

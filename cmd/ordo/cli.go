@@ -545,6 +545,9 @@ func titleCell(t api.Task) string {
 	if t.Status == string(store.StatusDone) {
 		title = "[done] " + title
 	}
+	if t.DoneToday {
+		title = "[done today] " + title
+	}
 	if !t.Enriched {
 		title += " ~"
 	}

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 )
@@ -130,4 +131,36 @@ func TestLoggedOnADay(t *testing.T) {
 	if other, _ := st.LoggedOn("2026-09-21"); len(other) != 0 {
 		t.Fatalf("logged on another day = %+v", other)
 	}
+}
+
+// A repeating task done today says so and sinks below the work still to do,
+// and a second completion that day is refused rather than taking tomorrow's.
+// Undo takes today's back, and the next day it is due like anything else.
+func TestARepeatingTaskIsDoneForTheDay(t *testing.T) {
+	fixedNow(t, "2026-09-20T09:00:00Z")
+	st := open(t)
+	drill := create(t, st, &Task{Title: "Green Book drill", RecurKind: RecurEvery, RecurRule: "daily", Due: "2026-09-20"})
+	later := create(t, st, &Task{Title: "Read AFML chapter 7", Due: "2026-10-30"})
+	if got := done(t, st, drill.ID); !got.DoneToday || got.Due != "2026-09-21" {
+		t.Fatalf("done today = %v due %s, want true and 2026-09-21", got.DoneToday, got.Due)
+	}
+	tasks, err := st.List(Filter{Status: StatusOpen})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 || tasks[0].ID != later.ID || !tasks[1].DoneToday {
+		t.Fatalf("order = %d, %d; want the drill done today last", tasks[0].ID, tasks[1].ID)
+	}
+	if _, err := st.Done(drill.ID, 0); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("second completion today: err = %v, want ErrInvalid", err)
+	}
+	if got, err := st.Undo(drill.ID); err != nil || got.DoneToday || got.Due != "2026-09-20" {
+		t.Fatalf("undo: done today = %v due %s err %v", got.DoneToday, got.Due, err)
+	}
+	done(t, st, drill.ID)
+	fixedNow(t, "2026-09-21T09:00:00Z")
+	if got := get(t, st, drill.ID); got.DoneToday {
+		t.Fatal("still done today the next day")
+	}
+	done(t, st, drill.ID)
 }

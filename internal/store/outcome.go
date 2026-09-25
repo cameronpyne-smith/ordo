@@ -142,12 +142,13 @@ func (s *Store) chainTo(id int64) (int, error) {
 	return len(seen), nil
 }
 
-// streaks fills in the run each repeating task is on.
+// streaks fills in the run each repeating task is on, and whether today's
+// occurrence is already done.
 func (s *Store) streaks(tasks []*Task) error {
 	var ids []any
 	byID := map[int64]*Task{}
 	for _, t := range tasks {
-		t.Streak = 0
+		t.Streak, t.DoneToday = 0, false
 		if t.Recurring() {
 			ids = append(ids, t.ID)
 			byID[t.ID] = t
@@ -163,7 +164,21 @@ func (s *Store) streaks(tasks []*Task) error {
 	for id, done := range onTime {
 		byID[id].Streak = run(done)
 	}
-	return nil
+	rows, err := s.db.Query(`SELECT DISTINCT task_id FROM completions
+		WHERE partial = 0 AND substr(done_at, 1, 10) = ? AND task_id IN (?`+strings.Repeat(",?", len(ids)-1)+`)`,
+		append([]any{Today()}, ids...)...)
+	if err != nil {
+		return fmt.Errorf("reading what is done today: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("reading what is done today: %w", err)
+		}
+		byID[id].DoneToday = true
+	}
+	return rows.Err()
 }
 
 // runBefore is the run a repeating task was on before its latest completion.

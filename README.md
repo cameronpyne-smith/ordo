@@ -310,7 +310,11 @@ linked to a note is. Undo names what waits again. In the terminal the row
 stays a moment, green and struck through, and the cursor then takes the row
 that slid into its place, even when a repeating task has moved on down the
 list. The header counts what today has got done and every minute logged on
-it, sessions included, and so does `ordo list`.
+it, sessions included, and so does `ordo list`. A repeating task done today
+waits at the foot of the list under "done today", ticked, until tomorrow,
+and cannot be done a second time that day: that would take tomorrow's
+occurrence, which is nearly always a key pressed twice. `u` takes today's
+back.
 
 `enter` opens the selected task. Priority and difficulty are enums, so `p`
 and `d` cycle them and shift steps back; every other field opens a line

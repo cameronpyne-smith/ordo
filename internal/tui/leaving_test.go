@@ -96,3 +96,21 @@ func TestTheDayShowsWhatIsDone(t *testing.T) {
 		t.Errorf("want the line under the day to say when it was done:\n%s", m.View())
 	}
 }
+
+// A repeating task done today sits ticked under its own heading, and d on it
+// says why nothing happens rather than asking how long it took.
+func TestARepeatingTaskDoneTodayIsTickedOff(t *testing.T) {
+	drill := task(3, "Green Book drill", due("2026-09-21"), func(t *api.Task) { t.DoneToday = true })
+	m := listOf(nil, drill)
+	m.width, m.height = 100, 20
+	if m.rows[0].heading != sectionDoneDay {
+		t.Fatalf("heading = %q, want %q", m.rows[0].heading, sectionDoneDay)
+	}
+	m, _ = press(t, m, "d")
+	if m.mode != modeList || !strings.Contains(m.message, "already done today") {
+		t.Fatalf("mode %v message %q, want a refusal in the footer", m.mode, m.message)
+	}
+	if !strings.Contains(m.View(), "✓ Green Book drill") {
+		t.Fatal("row is not ticked")
+	}
+}

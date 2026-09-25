@@ -27,9 +27,11 @@ type Task struct {
 	DoneAt           string `json:"done_at,omitempty"`
 	Enriched         bool   `json:"enriched"`
 	// Streak is how many of a repeating task's occurrences in a row were
-	// done on time. Outcome comes back only from done, work and undo.
-	Streak  int      `json:"streak,omitempty"`
-	Outcome *Outcome `json:"outcome,omitempty"`
+	// done on time, and DoneToday says today's is finished. Outcome comes
+	// back only from done, work and undo.
+	Streak    int      `json:"streak,omitempty"`
+	DoneToday bool     `json:"done_today,omitempty"`
+	Outcome   *Outcome `json:"outcome,omitempty"`
 }
 
 // Outcome is what finishing a task, or taking that back, changed beyond the
