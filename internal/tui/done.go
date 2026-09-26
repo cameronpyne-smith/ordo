@@ -78,7 +78,7 @@ func complete(c *client.Client, id int64, minutes int) (string, int64, error) {
 		note = fmt.Sprintf("done in %d min", minutes)
 	}
 	if t.Status == "open" {
-		note += " — next one " + t.Due
+		note += " — next one " + api.ShowDate(t.Due)
 	}
 	if waits := waitingOn(*t); waits != "" && t.Status == "done" {
 		note += " — it was waiting on " + waits

@@ -44,7 +44,7 @@ func TestWaitingTasksHaveTheirOwnSection(t *testing.T) {
 	}
 	m.width, m.height = 100, 20
 	view := m.View()
-	for _, want := range []string{"waits on 10", "from 2099-01-01"} {
+	for _, want := range []string{"waits on 10", "from 01/01/2099"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q\n%s", want, view)
 		}
@@ -63,7 +63,7 @@ func TestAPassedDownDeadlineSaysWhoseItIs(t *testing.T) {
 	m := listOf(nil, read)
 	m.width, m.height = 100, 20
 	view := m.View()
-	if !strings.Contains(view, "2099-10-13") || !strings.Contains(view, "for 12") {
+	if !strings.Contains(view, "13/10/2099") || !strings.Contains(view, "for 12") {
 		t.Errorf("want the passed-down date and whose it is on the row:\n%s", view)
 	}
 	if !strings.Contains(why(read), "so 12 can follow in time") {

@@ -422,7 +422,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if t.DoneToday {
-			m.message = fmt.Sprintf("already done today; the next one is due %s · u takes today's back", t.Due)
+			m.message = fmt.Sprintf("already done today; the next one is due %s · u takes today's back", api.ShowDate(t.Due))
 			return m, nil
 		}
 		return m.askTook(t, modeList)
@@ -474,7 +474,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err != nil {
 				return "", err
 			}
-			return "pinned to " + t.PinnedOn, nil
+			return "pinned to " + api.ShowDate(t.PinnedOn), nil
 		})
 	case "x":
 		t, ok := m.selected()

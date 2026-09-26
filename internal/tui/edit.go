@@ -43,8 +43,8 @@ type field struct {
 }
 
 var fields = []field{
-	{"due", "u", func(t api.Task) string { return t.Due }, func(t api.Task) string { return t.Due }, nil},
-	{"start", "s", func(t api.Task) string { return t.Start }, func(t api.Task) string { return t.Start },
+	{"due", "u", func(t api.Task) string { return api.ShowDate(t.Due) }, func(t api.Task) string { return api.ShowDate(t.Due) }, nil},
+	{"start", "s", func(t api.Task) string { return api.ShowDate(t.Start) }, func(t api.Task) string { return api.ShowDate(t.Start) },
 		func(t api.Task) bool { return t.Recur == nil }},
 	{"priority", "p", func(t api.Task) string { return t.Priority }, nil, nil},
 	{"difficulty", "d", func(t api.Task) string { return t.Difficulty }, nil, nil},
@@ -331,7 +331,7 @@ func (m Model) editBody(width int) string {
 			faintStyle.Render(" "+m.edit.Mnemo.Title), width))
 	}
 	if m.edit.PinnedOn != "" {
-		lines = append(lines, "", faintStyle.Render("  pinned to "+m.edit.PinnedOn))
+		lines = append(lines, "", faintStyle.Render("  pinned to "+api.ShowDate(m.edit.PinnedOn)))
 	}
 	return strings.Join(lines, "\n")
 }

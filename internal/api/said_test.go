@@ -13,7 +13,7 @@ func TestWhatAnOutcomeSays(t *testing.T) {
 	}{
 		{"nothing", nil, ""},
 		{"freed", &Outcome{Freed: []Freed{{ID: 2, Title: "Move wardrobe"}, {ID: 3, Title: "Paint", Start: "2026-10-01"}, {ID: 1, Title: "Move sofa"}}},
-			"can start now: 2 Move wardrobe, 1 Move sofa | 3 Paint can start from 2026-10-01"},
+			"can start now: 2 Move wardrobe, 1 Move sofa | 3 Paint can start from 01/10/2026"},
 		{"one waits again", &Outcome{WaitAgain: []Dep{{ID: 2}}}, "2 waits again"},
 		{"two wait again", &Outcome{WaitAgain: []Dep{{ID: 2}, {ID: 1}}}, "2, 1 wait again"},
 		{"a first time", &Outcome{Streak: 1}, ""},

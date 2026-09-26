@@ -217,7 +217,7 @@ func (m Model) dayHeader(width int) string {
 	if m.day == nil {
 		return pad("ordo · today", "asking the daemon…", width) + "\n" + rule(width)
 	}
-	left := "ordo · " + m.day.Date
+	left := "ordo · " + api.ShowDate(m.day.Date)
 	right := fmt.Sprintf("%d of %d min planned", m.day.PlannedMinutes, m.day.BudgetMinutes)
 	if m.day.Tally != nil {
 		right = fmt.Sprintf("%s · %d of %d min still planned", m.day.Tally.Said(), m.day.PlannedMinutes, m.day.BudgetMinutes)

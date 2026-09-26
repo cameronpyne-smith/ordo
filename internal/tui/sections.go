@@ -81,7 +81,7 @@ func waitPhrase(t api.Task) string {
 	case t.Blocked:
 		return "waits on " + waitingOn(t)
 	case t.Start > store.Today():
-		return "from " + t.Start
+		return "from " + api.ShowDate(t.Start)
 	}
 	return ""
 }

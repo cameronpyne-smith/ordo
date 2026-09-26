@@ -4,7 +4,19 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// ShowDate is a wire date the way it is read in the UK, 25/09/2026. The wire
+// and the database keep YYYY-MM-DD; this is only for people. Anything that
+// is not a date comes back as it was.
+func ShowDate(date string) string {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return date
+	}
+	return t.Format("02/01/2006")
+}
 
 // Said is an outcome in the words every client uses, one phrase per thing
 // that changed, for a line after "done".
@@ -24,7 +36,7 @@ func (o *Outcome) Said() []string {
 	}
 	for _, f := range o.Freed {
 		if f.Start != "" {
-			out = append(out, fmt.Sprintf("%d %s can start from %s", f.ID, f.Title, f.Start))
+			out = append(out, fmt.Sprintf("%d %s can start from %s", f.ID, f.Title, ShowDate(f.Start)))
 		}
 	}
 	if n := len(o.WaitAgain); n > 0 {

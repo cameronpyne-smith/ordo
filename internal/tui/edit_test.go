@@ -77,6 +77,10 @@ func TestEditRequestReadsEachField(t *testing.T) {
 	if err != nil || req.Due == nil || *req.Due != "2026-10-01" {
 		t.Fatalf("due: %+v %v", req, err)
 	}
+	req, err = editRequest("due", "01/10/2026")
+	if err != nil || req.Due == nil || *req.Due != "2026-10-01" {
+		t.Fatalf("due: %+v %v", req, err)
+	}
 	// An empty value is how a field is cleared, so it has to reach the
 	// daemon as a present-but-empty edit rather than an absent one.
 	if req, err := editRequest("due", ""); err != nil || req.Due == nil || *req.Due != "" {
@@ -202,7 +206,7 @@ func TestEditingAFieldPrefillsWhatIsThere(t *testing.T) {
 	if m.mode != modeField || m.field != "due" {
 		t.Fatalf("mode = %v field = %q", m.mode, m.field)
 	}
-	if m.input.Value() != "2026-10-01" {
+	if m.input.Value() != "01/10/2026" {
 		t.Fatalf("input = %q, want the current due date", m.input.Value())
 	}
 	m, _ = press(t, m, "esc")
@@ -277,7 +281,7 @@ func TestEditViewShowsEveryFieldAndItsKey(t *testing.T) {
 
 	view := m.View()
 	for _, want := range []string{
-		"#3", "Renew the passport", "2026-10-01", "high", "medium", "60 min",
+		"#3", "Renew the passport", "01/10/2026", "high", "medium", "60 min",
 		"monthly on 1", "[[latent]]", "esc back",
 	} {
 		if !strings.Contains(view, want) {
