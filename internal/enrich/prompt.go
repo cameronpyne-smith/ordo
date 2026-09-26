@@ -22,8 +22,9 @@ var Schema = map[string]any{
 		"start":      map[string]any{"type": "string"},
 		"recur_kind": map[string]any{"type": "string", "enum": []string{"", "every", "after"}},
 		"recur_rule": map[string]any{"type": "string"},
+		"title":      map[string]any{"type": "string"},
 	},
-	"required": []string{"difficulty", "priority", "minutes", "due", "start", "recur_kind", "recur_rule"},
+	"required": []string{"difficulty", "priority", "minutes", "due", "start", "recur_kind", "recur_rule", "title"},
 }
 
 // maxEstimate rejects a runaway number rather than letting it swallow a whole
@@ -57,6 +58,11 @@ recur_rule: the schedule, in exactly one of these forms and no other:
   after: 3d | 2w | 1m
   Use "" when recur_kind is "".
 
+title: the task exactly as written, with the words that gave its due, start or schedule deleted:
+  "Email fred by tomorrow" becomes "Email fred", "Put the bins out every tuesday" becomes
+  "Put the bins out". Delete only those words and change nothing else. When no words gave a date
+  or schedule, repeat the task unchanged.
+
 A repeating task carries a recur_rule and no due: the schedule decides the date.`
 
 // taskPrompt gives the model the task in its own words plus the one piece of
@@ -79,13 +85,20 @@ type extraction struct {
 	Start      string `json:"start"`
 	RecurKind  string `json:"recur_kind"`
 	RecurRule  string `json:"recur_rule"`
+	Title      string `json:"title"`
 }
 
 // inference keeps the fields the model got right and drops the ones it did
 // not. A due date it invented should not cost the difficulty that came back
 // in the same answer, and the store would reject the whole write.
-func (e extraction) inference(log *slog.Logger, id int64) store.Inference {
-	var in store.Inference
+func (e extraction) inference(log *slog.Logger, t *store.Task) store.Inference {
+	id := t.ID
+	in := store.Inference{ReadTitle: t.Title}
+	if e.Title != "" && e.Title != t.Title {
+		if in.Title = shorten(t.Title, e.Title); in.Title == "" {
+			log.Warn("model changed the title beyond cutting its date", "id", id, "title", e.Title)
+		}
+	}
 
 	switch store.Difficulty(e.Difficulty) {
 	case store.DifficultyLow, store.DifficultyMedium, store.DifficultyHigh:

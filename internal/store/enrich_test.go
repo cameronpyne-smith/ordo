@@ -135,3 +135,42 @@ func TestUnenrichedListsOpenTasksOnly(t *testing.T) {
 		t.Fatalf("got %v, want only the open unenriched task", ids)
 	}
 }
+
+// The date comes out of the title once the task holds the same date, whoever
+// set it, and stays when the two disagree or the title was renamed meanwhile.
+func TestEnrichCutsARedundantDateFromTheTitle(t *testing.T) {
+	fixedNow(t, "2026-09-21T09:00:00Z")
+	st := open(t)
+	cut := func(title, due string, in Inference) string {
+		t.Helper()
+		created := create(t, st, &Task{Title: title, Due: due})
+		got, err := st.Enrich(created.ID, in)
+		if err != nil {
+			t.Fatalf("enriching %q: %v", title, err)
+		}
+		return got.Title
+	}
+	bins := "take the bins out on tuesday"
+	short := Inference{Due: "2026-09-22", Title: "take the bins out", ReadTitle: bins}
+	if got := cut(bins, "", short); got != "take the bins out" {
+		t.Fatalf("inferred date: title = %q", got)
+	}
+	if got := cut(bins, "2026-09-22", short); got != "take the bins out" {
+		t.Fatalf("date already set to match: title = %q", got)
+	}
+	if got := cut(bins, "2026-09-23", short); got != bins {
+		t.Fatalf("date set to another day: title = %q, want it kept", got)
+	}
+	if got := cut(bins, "", Inference{Title: "take the bins out", ReadTitle: bins}); got != bins {
+		t.Fatalf("no date read: title = %q, want it kept", got)
+	}
+	renamed := short
+	renamed.ReadTitle = "take the bins out tuesday"
+	if got := cut(bins, "", renamed); got != bins {
+		t.Fatalf("renamed since read: title = %q, want it kept", got)
+	}
+	weekly := Inference{RecurKind: RecurEvery, RecurRule: "weekly on tue", Title: "Put the bins out", ReadTitle: "Put the bins out every tuesday"}
+	if got := cut("Put the bins out every tuesday", "", weekly); got != "Put the bins out" {
+		t.Fatalf("schedule: title = %q", got)
+	}
+}

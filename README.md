@@ -166,6 +166,14 @@ It happens in the background. `ordo add` writes the row and returns
 immediately; the row fills in a second or two later, and a `~` after the
 title marks one the model has not reached yet.
 
+Once the date or schedule is in its field, the words that said it come out
+of the title: "Email fred by tomorrow" becomes "Email fred", due tomorrow,
+and "Put the bins out every tuesday" becomes "Put the bins out", weekly on
+tuesday. That happens only when the task holds the same date or schedule the
+words gave, whoever set it, so a title that disagrees with its date keeps the
+evidence. The model may only delete, and only a short phrase made of date
+words; anything else it suggests is ignored and the title stays as typed.
+
 **Nothing you set is ever overwritten.** The model only fills fields that are
 empty, so `ordo add "Send the CV" --priority high` keeps that priority
 whatever the model thinks. To have it reconsider a field, clear the field and

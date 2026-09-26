@@ -16,6 +16,10 @@ type Inference struct {
 	Start      string
 	RecurKind  RecurKind
 	RecurRule  string
+	// Title is ReadTitle with the phrase that gave a date or schedule cut
+	// out. It replaces the title only where that phrase is now redundant.
+	Title     string
+	ReadTitle string
 }
 
 func (i Inference) Empty() bool {
@@ -31,6 +35,7 @@ func (s *Store) Enrich(id int64, in Inference) (*Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	read := in
 	if in.Difficulty != "" && t.Difficulty == "" {
 		t.Difficulty = in.Difficulty
 	}
@@ -57,6 +62,14 @@ func (s *Store) Enrich(id int64, in Inference) (*Task, error) {
 	// keeps the rest of the answer.
 	if in.Start != "" && t.Start == "" && !t.Recurring() && (t.Due == "" || in.Start <= t.Due) {
 		t.Start = in.Start
+	}
+	// The phrase comes out of the title only once the task says the same
+	// thing, whoever set it: a title that disagrees with its date is worth
+	// seeing. A title renamed since the model read it is left as it is.
+	said := read.Due != "" && read.Due == t.Due || read.Start != "" && read.Start == t.Start ||
+		read.RecurKind != "" && read.RecurKind == t.RecurKind && read.RecurRule == t.RecurRule
+	if in.Title != "" && said && t.Title == in.ReadTitle {
+		t.Title = in.Title
 	}
 	if err := t.validate(); err != nil {
 		return nil, fmt.Errorf("enriching task %d: %w", id, err)

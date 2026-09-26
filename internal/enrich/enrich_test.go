@@ -214,7 +214,7 @@ func TestBadAnswersAreDroppedFieldByField(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	e := extraction{Difficulty: "tricky", Priority: "high", Due: "next friday", RecurKind: "every", RecurRule: "weekly on funday"}
 
-	in := e.inference(log, 1)
+	in := e.inference(log, &store.Task{ID: 1, Title: "Send it next friday"})
 	if in.Priority != store.PriorityHigh {
 		t.Fatalf("priority = %q, want the one good field kept", in.Priority)
 	}
@@ -259,5 +259,27 @@ func TestDoneTasksAreSkipped(t *testing.T) {
 	}
 	if model.seen() != 0 {
 		t.Fatal("a completed task should not cost a model call")
+	}
+}
+
+func TestWorkerCutsTheDateOutOfTheTitle(t *testing.T) {
+	fixedNow(t, "2026-09-21T09:00:00Z")
+	model := &stub{answers: []string{
+		`{"difficulty":"low","priority":"normal","due":"2026-09-22","recur_kind":"","recur_rule":"","title":"Email fred"}`,
+	}}
+	w, st := newWorker(t, model)
+	created, _ := st.Create(&store.Task{Title: "Email fred by tomorrow"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go w.Run(ctx)
+	w.Queue(created.ID)
+
+	var got *store.Task
+	waitFor(t, "the task to be enriched", func() bool {
+		got, _ = st.Get(created.ID)
+		return got != nil && got.EnrichedAt != nil
+	})
+	if got.Title != "Email fred" || got.Due != "2026-09-22" {
+		t.Fatalf("got %q due %s, want the date moved out of the title", got.Title, got.Due)
 	}
 }

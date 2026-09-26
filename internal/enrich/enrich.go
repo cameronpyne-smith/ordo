@@ -123,13 +123,13 @@ func (w *Worker) enrich(ctx context.Context, id int64) error {
 	if err := json.Unmarshal(raw, &e); err != nil {
 		return fmt.Errorf("task %d: model answered %s: %w", id, raw, err)
 	}
-	in := e.inference(w.log, id)
+	in := e.inference(w.log, t)
 	after, err := w.store.Enrich(id, in)
 	if err != nil {
 		return err
 	}
 	w.log.Info("enriched", "id", id, "difficulty", after.Difficulty, "priority", after.Priority,
-		"due", after.Due, "start", after.Start, "recur", after.RecurRule)
+		"due", after.Due, "start", after.Start, "recur", after.RecurRule, "title", after.Title)
 	if w.OnEnriched != nil {
 		w.OnEnriched(id)
 	}
