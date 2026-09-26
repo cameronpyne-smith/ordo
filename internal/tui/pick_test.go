@@ -6,11 +6,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
 	"github.com/cameronpyne-smith/ordo/internal/client"
+	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
 func blockedBy(deps ...api.Dep) func(*api.Task) {
@@ -63,7 +65,7 @@ func TestAPassedDownDeadlineSaysWhoseItIs(t *testing.T) {
 	m := listOf(nil, read)
 	m.width, m.height = 100, 20
 	view := m.View()
-	if !strings.Contains(view, "13/10/2099") || !strings.Contains(view, "for 12") {
+	if !strings.Contains(view, "13 Oct 2099") || !strings.Contains(view, "for 12") {
 		t.Errorf("want the passed-down date and whose it is on the row:\n%s", view)
 	}
 	if !strings.Contains(why(read), "so 12 can follow in time") {
@@ -237,5 +239,22 @@ func TestTheCursorFollowsATaskThatMoves(t *testing.T) {
 	m = m.applyTasks(tasksMsg{resp: &api.ListResponse{Tasks: []api.Task{task(2, "Move wardrobe into office")}}})
 	if got, ok := m.selected(); !ok || got.ID != 2 {
 		t.Fatalf("selected %d, want the row that is left once the task has gone", got.ID)
+	}
+}
+
+// A row's date leads with the weekday, and carries the year only when it is
+// not this one; both take the same width so the titles line up.
+func TestARowDateReadsLikeAWeek(t *testing.T) {
+	original := store.Now
+	store.Now = func() time.Time { return time.Date(2026, 9, 27, 9, 0, 0, 0, store.Location) }
+	t.Cleanup(func() { store.Now = original })
+	for date, want := range map[string]string{
+		"2026-09-25": "Fri 25 Sep ",
+		"2027-01-04": "04 Jan 2027",
+		"":           "           ",
+	} {
+		if got := rowDate(date); got != want {
+			t.Errorf("rowDate(%q) = %q, want %q", date, got, want)
+		}
 	}
 }

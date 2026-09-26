@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/cameronpyne-smith/ordo/internal/api"
@@ -93,6 +94,21 @@ func deadline(t api.Task) string {
 		return t.EffectiveDue
 	}
 	return t.Due
+}
+
+// rowDate is a date as a row shows it, weekday first since that is what a
+// week is planned by, and the year only when it is not this one. It is
+// padded to one width so the titles line up whatever the date.
+func rowDate(date string) string {
+	d, err := store.ParseDate(date)
+	if err != nil {
+		return strings.Repeat(" ", len("25 Sep 2027"))
+	}
+	layout := "Mon 02 Jan"
+	if strconv.Itoa(d.Year()) != store.Today()[:4] {
+		layout = "02 Jan 2006"
+	}
+	return fmt.Sprintf("%-11s", d.Format(layout))
 }
 
 // daysUntilDue counts whole days from today to the deadline, negative when

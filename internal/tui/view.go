@@ -120,17 +120,14 @@ func (m Model) renderRow(i, width int) string {
 	}
 	t := r.task
 	if t.ID == m.leaving {
-		return truncate(doneStyle.Render(fmt.Sprintf("✓ %3d %-10s %s", t.ID, api.ShowDate(deadline(t)), t.Title)), width)
+		return truncate(doneStyle.Render(fmt.Sprintf("✓ %3d %s %s", t.ID, rowDate(deadline(t)), t.Title)), width)
 	}
 
 	marker := "  "
 	if i == m.cursor {
 		marker = "▸ "
 	}
-	due := "          "
-	if deadline(t) != "" {
-		due = api.ShowDate(deadline(t))
-	}
+	due := rowDate(deadline(t))
 	if t.Overdue {
 		due = overdueStyle.Render(due)
 	} else {
