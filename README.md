@@ -123,8 +123,8 @@ by that. The list shows the date with whose it is:
 ```
 $ ordo list
 ID  DUE                PRIORITY  DIFFICULTY  TITLE
-10  2026-10-13 for 12  high      high        Read AFML chapter 11
-12  2026-10-15         normal    high        Re-rate the skills matrix (waits on 10, 11)
+10  13/10/2026 for 12  high      high        Read AFML chapter 11
+12  15/10/2026         normal    high        Re-rate the skills matrix (waits on 10, 11)
 ```
 
 ## Recurring tasks
@@ -240,8 +240,8 @@ session-sized tasks pulled out of it.
 ```sh
 $ ordo list --note career-transition-quantitative-researcher
 ID  DUE         PRIORITY  DIFFICULTY  REPEATS  TITLE
-7   2026-09-22  normal    medium      daily    Green Book: 5 timed problems [[career-...]]
-9   2026-09-27  high      high        -        Wooldridge ch. 2, exercises [[career-...]]
+7   22/09/2026  normal    medium      daily    Green Book: 5 timed problems [[career-...]]
+9   27/09/2026  high      high        -        Wooldridge ch. 2, exercises [[career-...]]
 ```
 
 Only `--linked` and `--note` check the links, since those are the views whose
@@ -256,7 +256,7 @@ Bare `ordo` opens the list in the terminal. It is a thin client like every
 other command: the daemon decides the order, and the terminal only groups it
 into **overdue**, **today**, **this week**, **later**, **someday** and
 **waiting**, which holds what cannot be started yet, each row saying why:
-"waits on 10, 11" or "from 2026-10-15". A section can never reorder
+"waits on 10, 11" or "from 15/10/2026". A section can never reorder
 anything, because a task falls into the first one it qualifies for and the
 daemon's order is kept inside it.
 
@@ -264,11 +264,11 @@ daemon's order is kept inside it.
 ordo · open                                                            6 shown
 ────────────────────────────────────────────────────────────────────────────
 overdue
-▸  11 2026-09-19 ! Send the quant CV to the recrui [[career-transition-quant…
+▸  11 19/09/2026 ! Send the quant CV to the recrui [[career-transition-quant…
 today
-   10 2026-09-21 Water the plants every 3 days
+   10 21/09/2026 Water the plants every 3 days
 this week
-    9 2026-09-22 Put the bins out every tuesday
+    9 22/09/2026 Put the bins out every tuesday
 someday
    14            Rewrite the latent pricing model [[latent]] (missing)
    16            Renew the passport ~
@@ -344,7 +344,7 @@ ordo · #3
 
   Rewrite the latent pricing model
 
-  u  due         2026-10-01
+  u  due         01/10/2026
   s  start       —
   p  priority    high
   d  difficulty  high
@@ -393,7 +393,7 @@ listed under the plan, since the plan is only ever what is left of it.
 
 ```
 $ ordo today --why
-2026-09-21  90 of 180 minutes planned
+21/09/2026  90 of 180 minutes planned
 
 07:00-07:30     3  Send the quant CV        30 min
 08:00-08:45     1  Wooldridge chapter 2     45 min

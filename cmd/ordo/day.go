@@ -42,7 +42,7 @@ func newTodayCmd(configPath *string) *cobra.Command {
 }
 
 func printDay(w io.Writer, plan *api.TodayResponse, why bool) {
-	fmt.Fprintf(w, "%s  %d of %d minutes planned\n", plan.Date, plan.PlannedMinutes, plan.BudgetMinutes)
+	fmt.Fprintf(w, "%s  %d of %d minutes planned\n", api.ShowDate(plan.Date), plan.PlannedMinutes, plan.BudgetMinutes)
 	if plan.Tally != nil {
 		fmt.Fprintf(w, "%s so far\n", plan.Tally.Said())
 	}
@@ -168,7 +168,7 @@ func newPinCmd(configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "pinned %d to %s: %s\n", t.ID, t.PinnedOn, t.Title)
+			fmt.Fprintf(cmd.OutOrStdout(), "pinned %d to %s: %s\n", t.ID, api.ShowDate(t.PinnedOn), t.Title)
 			return nil
 		},
 	}

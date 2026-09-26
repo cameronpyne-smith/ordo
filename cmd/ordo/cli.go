@@ -137,7 +137,7 @@ func newDoneCmd(configPath *string) *cobra.Command {
 				return err
 			}
 			if t.Recur != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s (next due %s)\n", t.ID, t.Title, t.Due)
+				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s (next due %s)\n", t.ID, t.Title, api.ShowDate(t.Due))
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "done %d: %s\n", t.ID, t.Title)
 			}
@@ -516,7 +516,7 @@ func dueSuffix(t *api.Task) string {
 	if t.Due == "" {
 		return ""
 	}
-	return " (due " + t.Due + ")"
+	return " (due " + api.ShowDate(t.Due) + ")"
 }
 
 // dueCell shows the date the task has to be done by, which for a task others
@@ -529,6 +529,7 @@ func dueCell(t api.Task) string {
 	if date == "" {
 		return "-"
 	}
+	date = api.ShowDate(date)
 	if t.Overdue {
 		date += "!"
 	}
@@ -578,7 +579,7 @@ func waitingNote(t api.Task) string {
 	case len(ids) > 0:
 		return "waits on " + strings.Join(ids, ", ")
 	case t.Start > store.Today():
-		return "from " + t.Start
+		return "from " + api.ShowDate(t.Start)
 	}
 	return ""
 }
