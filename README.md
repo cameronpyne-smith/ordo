@@ -264,11 +264,11 @@ daemon's order is kept inside it.
 ordo · open                                                            6 shown
 ────────────────────────────────────────────────────────────────────────────
 overdue
-▸  11 8 days ago  ! Send the quant CV to the recrui [[career-transition-quant…
+▸  11 2 days ago  ! Send the quant CV to the recrui [[career-transition-quant…
 today
-   10 Mon 21 Sep  Water the plants every 3 days
+   10 Today       Water the plants every 3 days
 this week
-    9 Tue 22 Sep  Put the bins out every tuesday
+    9 Tomorrow    Put the bins out every tuesday
 someday
    14            Rewrite the latent pricing model [[latent]] (missing)
    16            Renew the passport ~
