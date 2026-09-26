@@ -242,16 +242,22 @@ func TestTheCursorFollowsATaskThatMoves(t *testing.T) {
 	}
 }
 
-// A row's date names yesterday, today and tomorrow, otherwise leads with the
-// weekday and carries the year only when it is not this one; all take the
-// same width so the titles line up.
+// A row's date names yesterday, today and tomorrow, counts back the days of
+// anything older that fits, otherwise leads with the weekday and carries the
+// year only when it is not this one; all take the same width so the titles
+// line up.
 func TestARowDateReadsLikeAWeek(t *testing.T) {
 	original := store.Now
 	store.Now = func() time.Time { return time.Date(2026, 9, 27, 9, 0, 0, 0, store.Location) }
 	t.Cleanup(func() { store.Now = original })
 	for date, want := range map[string]string{
-		"2026-09-25": "Fri 25 Sep ",
+		"2026-09-25": "2 days ago ",
+		"2026-10-02": "Fri 02 Oct ",
 		"2026-09-26": "Yesterday  ",
+		"2026-09-17": "10 days ago",
+		"2026-06-20": "99 days ago",
+		"2026-06-19": "Fri 19 Jun ",
+		"2025-12-01": "01 Dec 2025",
 		"2026-09-27": "Today      ",
 		"2026-09-28": "Tomorrow   ",
 		"2027-01-04": "04 Jan 2027",

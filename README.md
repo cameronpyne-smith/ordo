@@ -264,7 +264,7 @@ daemon's order is kept inside it.
 ordo · open                                                            6 shown
 ────────────────────────────────────────────────────────────────────────────
 overdue
-▸  11 Sat 19 Sep  ! Send the quant CV to the recrui [[career-transition-quant…
+▸  11 8 days ago  ! Send the quant CV to the recrui [[career-transition-quant…
 today
    10 Mon 21 Sep  Water the plants every 3 days
 this week

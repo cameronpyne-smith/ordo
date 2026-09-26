@@ -30,6 +30,9 @@ var sectionOrder = []string{
 
 const weekAhead = 7
 
+// maxDaysAgo is the most "days ago" the date column has room for.
+const maxDaysAgo = 99
+
 func sectionOf(t api.Task) string {
 	if t.Status == "done" {
 		return sectionDone
@@ -96,9 +99,11 @@ func deadline(t api.Task) string {
 }
 
 // rowDate is a date as a row shows it: yesterday, today and tomorrow by
-// name, otherwise weekday first since that is what a week is planned by,
-// and the year only when it is not this one. It is padded to one width so
-// the titles line up whatever the date.
+// name, and anything further back by how long ago, since that is what an
+// overdue date is for. Past what fits the column, and forwards, weekday
+// first since that is what a week is planned by, and the year only when it
+// is not this one. It is padded to one width so the titles line up whatever
+// the date.
 func rowDate(date string) string {
 	d, err := store.ParseDate(date)
 	if err != nil {
@@ -113,6 +118,8 @@ func rowDate(date string) string {
 		shown = "Today"
 	case d.Equal(today.AddDate(0, 0, 1)):
 		shown = "Tomorrow"
+	case d.Before(today) && d.After(today.AddDate(0, 0, -maxDaysAgo-1)):
+		shown = fmt.Sprintf("%d days ago", int(today.Sub(d).Hours()/24+0.5))
 	case d.Year() != today.Year():
 		shown = d.Format("02 Jan 2006")
 	default:
