@@ -152,10 +152,12 @@ func (m Model) renderRow(i, width int) string {
 	room := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
 	line := prefix + truncate(title, max(room, 12))
 	switch {
-	case i == m.cursor:
-		line = selectStyle.Render(line)
+	case t.DoneToday && i == m.cursor:
+		line = selectStyle.Render(prefix) + doneStyle.Bold(true).Render(truncate(title, max(room, 12)))
 	case t.DoneToday:
 		line = prefix + doneStyle.Render(truncate(title, max(room, 12)))
+	case i == m.cursor:
+		line = selectStyle.Render(line)
 	}
 	return line + suffix
 }
