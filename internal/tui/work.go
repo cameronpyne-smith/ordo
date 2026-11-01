@@ -21,7 +21,7 @@ func (m Model) askWorked(t api.Task, took int, from mode) (tea.Model, tea.Cmd) {
 		m.failure = "a repeating task is done in one go: d completes it"
 		return m, nil
 	}
-	m.mode, m.took, m.tookFrom, m.working, m.failure = modeTook, t, from, true, ""
+	m.mode, m.took, m.tookFrom, m.failure = modeTook, t, from, ""
 	m.input.Placeholder = "unknown"
 	m.input.SetValue("")
 	if took > 0 {
@@ -30,6 +30,40 @@ func (m Model) askWorked(t api.Task, took int, from mode) (tea.Model, tea.Cmd) {
 	m.input.CursorEnd()
 	m.input.Focus()
 	return m, textinput.Blink
+}
+
+// keyTook reads how long the session took and goes on to ask what is left.
+// esc backs out without logging anything, the same as esc everywhere else in
+// ordo.
+func (m Model) keyTook(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = m.tookFrom
+		m.input.Blur()
+		return m, nil
+	case "enter":
+		minutes, err := readTook(m.input.Value())
+		if err != nil {
+			m.failure = err.Error()
+			return m, nil
+		}
+		return m.askLeft(minutes)
+	}
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
+}
+
+func readTook(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%q is not a number of minutes; leave it empty if you do not know", value)
+	}
+	return n, nil
 }
 
 // askLeft is the second line, prefilled with what was left less what was
@@ -59,7 +93,7 @@ func leftOf(t api.Task) int {
 func (m Model) keyLeft(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.mode, m.working = m.tookFrom, false
+		m.mode = m.tookFrom
 		m.input.Blur()
 		return m, nil
 	case "enter":
@@ -68,7 +102,7 @@ func (m Model) keyLeft(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.failure = err.Error()
 			return m, nil
 		}
-		m.mode, m.working, m.failure = m.tookFrom, false, ""
+		m.mode, m.failure = m.tookFrom, ""
 		m.input.Blur()
 		id, minutes := m.took.ID, m.worked
 		return m, m.logged(func(c *client.Client) (string, int64, error) { return work(c, id, minutes, left) })
@@ -128,4 +162,15 @@ func (m Model) logged(do func(*client.Client) (string, int64, error)) tea.Cmd {
 		note, finished, err := do(c)
 		return actedMsg{note: note, finished: finished, err: err}
 	}
+}
+
+func (m Model) tookFooter(width int) string {
+	prompt := "minutes it took: " + m.input.View()
+	if m.mode == modeLeft {
+		prompt = "minutes left, 0 if it is finished: " + m.input.View()
+	}
+	if m.failure != "" {
+		return rule(width) + "\n" + truncate(errorStyle.Render(m.failure), width) + "\n" + prompt
+	}
+	return rule(width) + "\n" + prompt
 }

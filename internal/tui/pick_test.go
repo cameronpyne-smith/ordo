@@ -212,8 +212,7 @@ func TestDoneOnAWaitingTaskSaysWhatItWaitedOn(t *testing.T) {
 	stored := task(12, "Re-rate", blockedBy(api.Dep{ID: 10, Title: "Read"}))
 	c, _ := completing(t, stored)
 	m := listOf(c, stored)
-	m, _ = press(t, m, "d")
-	m, cmd := press(t, m, "enter")
+	m, cmd := press(t, m, "d")
 	m = run(t, m, cmd)
 	if !strings.Contains(m.message, "it was waiting on 10") {
 		t.Fatalf("message = %q, want what it was waiting on", m.message)

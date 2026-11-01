@@ -108,7 +108,6 @@ type Model struct {
 
 	took     api.Task
 	tookFrom mode
-	working  bool
 	worked   int
 
 	message string
@@ -425,7 +424,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.message = fmt.Sprintf("already done today; the next one is due %s · u takes today's back", api.ShowDate(t.Due))
 			return m, nil
 		}
-		return m.askTook(t, modeList)
+		return m.finish(t, modeList)
 	case "w":
 		t, ok := m.selected()
 		if !ok {

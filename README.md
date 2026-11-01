@@ -293,11 +293,9 @@ the linked note, and a number also finds the ids that start with it. Enter
 keeps the search so the match can be opened or done, and esc clears it.
 `a` adds a task: type the sentence and the daemon extracts the rest of it,
 so the new row appears bare and fills in a second or two later while you
-watch. `d` asks how long the task took before completing it, with the
-estimate already filled in: enter keeps it, a number replaces it, an empty
-line records no time, and esc completes nothing. Those minutes are what the
-estimates will be calibrated against. `w` is for work that is not finished:
-it asks the same question, then how much is left, filled in with what was
+watch. `d` completes the task at once, logging no time. `w` is for work
+that is not finished: it asks how long the session took, then how much is
+left, filled in with what was
 left less the time just spent. Enter keeps it; a number says the job turned
 out bigger or smaller than that, since time spent is not progress; 0 means
 it is finished after all. `d` always finishes and `w` never does, and `u`

@@ -134,12 +134,8 @@ func TestEscapeLogsNoSession(t *testing.T) {
 	if cmd != nil {
 		cmd()
 	}
-	if len(got.sent) != 0 || m.mode != modeList || m.working {
+	if len(got.sent) != 0 || m.mode != modeList {
 		t.Fatalf("sent %+v, mode = %v; want nothing sent and the list back", got.sent, m.mode)
-	}
-	m, _ = press(t, m, "d")
-	if m.working {
-		t.Fatal("d after an abandoned w still thinks it is logging a session")
 	}
 }
 

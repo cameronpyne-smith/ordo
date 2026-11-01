@@ -120,7 +120,7 @@ func (m Model) keyDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		return m.askTook(t, modeDay)
+		return m.finish(t, modeDay)
 	case "w":
 		b, ok := m.dayCursorBlock()
 		if !ok {
