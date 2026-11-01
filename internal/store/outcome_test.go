@@ -164,3 +164,12 @@ func TestARepeatingTaskIsDoneForTheDay(t *testing.T) {
 	}
 	done(t, st, drill.ID)
 }
+
+func TestAFinishedTaskIsNotFinishedAgain(t *testing.T) {
+	st := open(t)
+	report := create(t, st, &Task{Title: "Send the report"})
+	done(t, st, report.ID)
+	if _, err := st.Done(report.ID, 0); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("completing a finished task again: err = %v, want ErrInvalid", err)
+	}
+}

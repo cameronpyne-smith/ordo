@@ -571,6 +571,9 @@ func (s *Store) complete(id int64, minutes int) error {
 		return err
 	}
 	now := Now()
+	if t.Status == StatusDone {
+		return fmt.Errorf("task %d is already done: %w", id, ErrInvalid)
+	}
 	// A second completion on the same day would silently take tomorrow's
 	// occurrence, which is almost always a key pressed twice.
 	if t.Recurring() {
