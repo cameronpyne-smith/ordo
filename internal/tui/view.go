@@ -235,7 +235,9 @@ func (m Model) detail(width int) string {
 // linkPane is the vault seen from a task: the note it points at and that
 // note's neighbourhood, or the notes it could point at instead. Both states
 // come from one call, so relinking a renamed note is the same gesture as
-// linking for the first time.
+// linking for the first time. The pane grows to hold every candidate: the
+// list above gives way while a note is being chosen, rather than the choice
+// running off the bottom of a fixed pane.
 func (m Model) linkPane(width int) string {
 	lines := []string{rule(width)}
 	switch {
@@ -257,7 +259,7 @@ func (m Model) linkPane(width int) string {
 	for len(lines) < detailHeight {
 		lines = append(lines, "")
 	}
-	return strings.Join(lines[:detailHeight], "\n")
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) candidates(width int) []string {

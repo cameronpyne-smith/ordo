@@ -230,6 +230,26 @@ func TestViewRendersEveryMode(t *testing.T) {
 	}
 }
 
+// Every candidate the vault offered is on screen, the last included, and
+// the frame still fits the terminal.
+func TestLinkPaneShowsEveryCandidate(t *testing.T) {
+	m := New(nil)
+	m.width, m.height = 90, 24
+	m = m.applyTasks(tasksMsg{resp: &api.ListResponse{Tasks: []api.Task{task(1, "Send the quant CV")}}})
+	m.mode = modeLink
+	m.related = &api.RelatedResponse{Candidates: []api.Hit{
+		{Slug: "one"}, {Slug: "two"}, {Slug: "three"}, {Slug: "four"}, {Slug: "fifth-note"},
+	}}
+	m.candidate = 4
+	frame := m.View()
+	if !strings.Contains(frame, "fifth-note") {
+		t.Fatalf("the last candidate is off the screen:\n%s", frame)
+	}
+	if got := len(strings.Split(frame, "\n")); got > m.height {
+		t.Fatalf("rendered %d lines into a %d-line terminal", got, m.height)
+	}
+}
+
 // A terminal that has not reported its size yet still has to render, because
 // the first frame goes out before the size message arrives.
 func TestViewBeforeTheSizeIsKnown(t *testing.T) {
