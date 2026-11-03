@@ -13,12 +13,12 @@ import (
 // The terminal's own colours each mean one thing here, and a tag must not
 // be mistaken for any of them:
 //
-//	red      1   overdue, and an error in the footer
-//	green    2   done: a finished row, and a repeating task done today
-//	yellow   3   a link whose note has gone
-//	magenta  5   section headings
-//	cyan     6   a link to a note
-//	white/grey   ordinary and faint text
+//	red          1   overdue, and an error in the footer
+//	green        2   done: a finished row, and a repeating task done today
+//	yellow       3   a link whose note has gone
+//	magenta      5   section headings
+//	bright blue  12  a link to a note
+//	white/grey       ordinary and faint text
 //
 // So the tags take fixed colours from the 256-colour table instead, chosen
 // to be told apart from those and from each other, and readable on a dark

@@ -14,7 +14,7 @@ var (
 	selectStyle  = lipgloss.NewStyle().Bold(true)
 	faintStyle   = lipgloss.NewStyle().Faint(true)
 	overdueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	linkStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	linkStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	brokenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	doneStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Strikethrough(true)
