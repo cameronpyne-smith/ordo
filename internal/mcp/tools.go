@@ -16,39 +16,44 @@ type ListArgs struct {
 	Overdue    bool   `json:"overdue,omitempty" jsonschema:"only tasks whose due date has passed"`
 	Linked     bool   `json:"linked,omitempty" jsonschema:"only tasks linked to a mnemo note"`
 	Note       string `json:"note,omitempty" jsonschema:"only tasks linked to this note, by slug: the tasks in flight for one workstream"`
+	Tag        string `json:"tag,omitempty" jsonschema:"only tasks carrying this tag, one word such as house; todo_tags lists the ones in use"`
 	Recurring  bool   `json:"recurring,omitempty" jsonschema:"only tasks that repeat"`
 	Limit      int    `json:"limit,omitempty" jsonschema:"show at most this many"`
 }
 
 type AddArgs struct {
-	Title           string  `json:"title" jsonschema:"the task as a sentence, e.g. put the bins out every tuesday"`
-	Notes           string  `json:"notes,omitempty" jsonschema:"a free-text line of detail, not knowledge worth keeping in mnemo"`
-	Difficulty      string  `json:"difficulty,omitempty" jsonschema:"only if you actually know it; otherwise inference decides"`
-	Priority        string  `json:"priority,omitempty" jsonschema:"only if you actually know it; otherwise inference decides"`
-	EstimateMinutes int     `json:"estimate_minutes,omitempty" jsonschema:"how long it will take, in minutes, if known"`
-	Due             string  `json:"due,omitempty" jsonschema:"due date as YYYY-MM-DD; only if the sentence does not already say it"`
-	Start           string  `json:"start,omitempty" jsonschema:"YYYY-MM-DD the task cannot begin before; it stays out of the plan until then. Only if the sentence does not already say it; never on a repeating task"`
-	RecurKind       string  `json:"recur_kind,omitempty" jsonschema:"every for a fixed cycle, after for an interval counted from each completion: every 2w is fortnightly, after 2w is two weeks from the day it was last done"`
-	RecurRule       string  `json:"recur_rule,omitempty" jsonschema:"for every: daily, weekly on tue, weekly on mon,thu, monthly on 1, monthly on last, yearly on 03-15, or an interval such as 3d, 2w, 1m. For after: 3d, 2w, 1m"`
-	MnemoSlug       string  `json:"mnemo_slug,omitempty" jsonschema:"slug of the mnemo note this task came out of; the note must already exist"`
-	BlockedBy       []int64 `json:"blocked_by,omitempty" jsonschema:"ids of open one-off tasks that have to be finished before this one can start; only when I have said so"`
+	Title           string   `json:"title" jsonschema:"the task as a sentence, e.g. put the bins out every tuesday"`
+	Notes           string   `json:"notes,omitempty" jsonschema:"a free-text line of detail, not knowledge worth keeping in mnemo"`
+	Difficulty      string   `json:"difficulty,omitempty" jsonschema:"only if you actually know it; otherwise inference decides"`
+	Priority        string   `json:"priority,omitempty" jsonschema:"only if you actually know it; otherwise inference decides"`
+	EstimateMinutes int      `json:"estimate_minutes,omitempty" jsonschema:"how long it will take, in minutes, if known"`
+	Due             string   `json:"due,omitempty" jsonschema:"due date as YYYY-MM-DD; only if the sentence does not already say it"`
+	Start           string   `json:"start,omitempty" jsonschema:"YYYY-MM-DD the task cannot begin before; it stays out of the plan until then. Only if the sentence does not already say it; never on a repeating task"`
+	RecurKind       string   `json:"recur_kind,omitempty" jsonschema:"every for a fixed cycle, after for an interval counted from each completion: every 2w is fortnightly, after 2w is two weeks from the day it was last done"`
+	RecurRule       string   `json:"recur_rule,omitempty" jsonschema:"for every: daily, weekly on tue, weekly on mon,thu, monthly on 1, monthly on last, yearly on 03-15, or an interval such as 3d, 2w, 1m. For after: 3d, 2w, 1m"`
+	MnemoSlug       string   `json:"mnemo_slug,omitempty" jsonschema:"slug of the mnemo note this task came out of; the note must already exist"`
+	BlockedBy       []int64  `json:"blocked_by,omitempty" jsonschema:"ids of open one-off tasks that have to be finished before this one can start; only when I have said so"`
+	Tags            []string `json:"tags,omitempty" jsonschema:"groups the task belongs to, one word each such as house or career; use a tag already in use (todo_tags) rather than coining a near-duplicate, and only when I have said which group it is in"`
 }
 
 type SetArgs struct {
-	ID               int64    `json:"id" jsonschema:"the task id"`
-	Title            *string  `json:"title,omitempty" jsonschema:"a new title; this re-runs inference over the new sentence"`
-	Notes            *string  `json:"notes,omitempty" jsonschema:"replacement detail line, or empty to clear"`
-	Status           *string  `json:"status,omitempty" jsonschema:"open or done; prefer todo_done, which also handles recurrence"`
-	Difficulty       *string  `json:"difficulty,omitempty" jsonschema:"low, medium or high, or empty to clear"`
-	Priority         *string  `json:"priority,omitempty" jsonschema:"low, normal or high, or empty to clear"`
-	EstimateMinutes  *int     `json:"estimate_minutes,omitempty" jsonschema:"how long it will take in minutes; 0 clears it. Once work has started this stays the first guess and remaining_minutes is what the plan uses"`
-	RemainingMinutes *int     `json:"remaining_minutes,omitempty" jsonschema:"how much is left of a task already started, in minutes: a re-estimate part way through. 0 puts it back to the whole estimate"`
-	Due              *string  `json:"due,omitempty" jsonschema:"YYYY-MM-DD, or empty to clear the due date"`
-	Start            *string  `json:"start,omitempty" jsonschema:"YYYY-MM-DD the task cannot begin before, or empty to clear it. Not for a repeating task"`
-	RecurKind        *string  `json:"recur_kind,omitempty" jsonschema:"every or after, or empty to stop it repeating"`
-	RecurRule        *string  `json:"recur_rule,omitempty" jsonschema:"the rule text for the kind"`
-	BlockedBy        *[]int64 `json:"blocked_by,omitempty" jsonschema:"the whole list of task ids this one waits on, replacing what it had; an empty list clears it. Blockers must be open one-off tasks, and a loop is refused"`
+	ID               int64     `json:"id" jsonschema:"the task id"`
+	Title            *string   `json:"title,omitempty" jsonschema:"a new title; this re-runs inference over the new sentence"`
+	Notes            *string   `json:"notes,omitempty" jsonschema:"replacement detail line, or empty to clear"`
+	Status           *string   `json:"status,omitempty" jsonschema:"open or done; prefer todo_done, which also handles recurrence"`
+	Difficulty       *string   `json:"difficulty,omitempty" jsonschema:"low, medium or high, or empty to clear"`
+	Priority         *string   `json:"priority,omitempty" jsonschema:"low, normal or high, or empty to clear"`
+	EstimateMinutes  *int      `json:"estimate_minutes,omitempty" jsonschema:"how long it will take in minutes; 0 clears it. Once work has started this stays the first guess and remaining_minutes is what the plan uses"`
+	RemainingMinutes *int      `json:"remaining_minutes,omitempty" jsonschema:"how much is left of a task already started, in minutes: a re-estimate part way through. 0 puts it back to the whole estimate"`
+	Due              *string   `json:"due,omitempty" jsonschema:"YYYY-MM-DD, or empty to clear the due date"`
+	Start            *string   `json:"start,omitempty" jsonschema:"YYYY-MM-DD the task cannot begin before, or empty to clear it. Not for a repeating task"`
+	RecurKind        *string   `json:"recur_kind,omitempty" jsonschema:"every or after, or empty to stop it repeating"`
+	RecurRule        *string   `json:"recur_rule,omitempty" jsonschema:"the rule text for the kind"`
+	BlockedBy        *[]int64  `json:"blocked_by,omitempty" jsonschema:"the whole list of task ids this one waits on, replacing what it had; an empty list clears it. Blockers must be open one-off tasks, and a loop is refused"`
+	Tags             *[]string `json:"tags,omitempty" jsonschema:"the whole list of tags the task carries, replacing what it had; an empty list clears it. Read the task first when adding one"`
 }
+
+type NoArgs struct{}
 
 type IDArgs struct {
 	ID int64 `json:"id" jsonschema:"the task id"`
@@ -79,6 +84,7 @@ func (t *toolServer) list(ctx context.Context, _ *sdk.CallToolRequest, args List
 		Overdue:    args.Overdue,
 		Linked:     args.Linked,
 		Note:       args.Note,
+		Tag:        args.Tag,
 		Recurring:  args.Recurring,
 		Limit:      args.Limit,
 	}
@@ -102,8 +108,14 @@ func (t *toolServer) add(ctx context.Context, _ *sdk.CallToolRequest, args AddAr
 		RecurRule:       args.RecurRule,
 		MnemoSlug:       args.MnemoSlug,
 		BlockedBy:       args.BlockedBy,
+		Tags:            args.Tags,
 	})
 	return nil, task, err
+}
+
+func (t *toolServer) tags(_ context.Context, _ *sdk.CallToolRequest, _ NoArgs) (*sdk.CallToolResult, api.TagsResponse, error) {
+	resp, err := t.todo.Tags()
+	return nil, resp, err
 }
 
 func (t *toolServer) set(_ context.Context, _ *sdk.CallToolRequest, args SetArgs) (*sdk.CallToolResult, api.Task, error) {
@@ -120,6 +132,7 @@ func (t *toolServer) set(_ context.Context, _ *sdk.CallToolRequest, args SetArgs
 		RecurKind:        args.RecurKind,
 		RecurRule:        args.RecurRule,
 		BlockedBy:        args.BlockedBy,
+		Tags:             args.Tags,
 	})
 	return nil, task, err
 }

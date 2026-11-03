@@ -25,6 +25,7 @@ func FromTask(t *store.Task) Task {
 		BlockedBy:        fromDeps(t.BlockedBy),
 		Blocks:           fromDeps(t.Blocks),
 		Blocked:          t.Blocked(),
+		Tags:             t.Tags,
 		PinnedOn:         t.PinnedOn,
 		CreatedAt:        t.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        t.UpdatedAt.Format(time.RFC3339),
@@ -79,6 +80,14 @@ func fromDeps(deps []store.Dep) []Dep {
 	return out
 }
 
+func FromTags(counts []store.TagCount) TagsResponse {
+	out := TagsResponse{Tags: make([]TagCount, 0, len(counts))}
+	for _, c := range counts {
+		out.Tags = append(out.Tags, TagCount{Tag: c.Tag, Open: c.Open, Done: c.Done})
+	}
+	return out
+}
+
 func FromTasks(tasks []*store.Task) []Task {
 	out := make([]Task, 0, len(tasks))
 	for _, t := range tasks {
@@ -94,6 +103,7 @@ func (r EditRequest) Edit() store.Edit {
 	e.Due = r.Due
 	e.Start = r.Start
 	e.BlockedBy = r.BlockedBy
+	e.Tags = r.Tags
 	e.Estimate = r.EstimateMinutes
 	e.Remaining = r.RemainingMinutes
 	if r.Status != nil {

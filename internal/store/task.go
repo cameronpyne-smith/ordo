@@ -109,6 +109,9 @@ type Task struct {
 	RecurRule  string
 	MnemoSlug  string
 	MnemoTitle string
+	// Tags are the groups the task belongs to that are not a note, read
+	// alongside it and written on Create and through Edit.Tags.
+	Tags       []string
 	PinnedOn   string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
@@ -289,6 +292,11 @@ func (t *Task) validate() error {
 	if t.MnemoSlug == "" {
 		t.MnemoTitle = ""
 	}
+	tags, err := normaliseTags(t.Tags)
+	if err != nil {
+		return err
+	}
+	t.Tags = tags
 	switch t.RecurKind {
 	case "", RecurEvery, RecurAfter:
 	default:

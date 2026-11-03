@@ -23,6 +23,9 @@ func (s *Store) annotate(tasks []*Task) error {
 	if err := s.streaks(tasks); err != nil {
 		return err
 	}
+	if err := s.tags(tasks); err != nil {
+		return err
+	}
 	edges, err := s.edges()
 	if err != nil {
 		return err

@@ -31,6 +31,7 @@ type Filter struct {
 	Overdue    bool
 	Linked     bool
 	Note       string
+	Tag        string
 	Recurring  bool
 	Quick      bool
 	Limit      int
@@ -55,6 +56,9 @@ func (f Filter) query() string {
 	}
 	if f.Note != "" {
 		q.Set("note", f.Note)
+	}
+	if f.Tag != "" {
+		q.Set("tag", f.Tag)
 	}
 	if f.Recurring {
 		q.Set("recurring", "true")
@@ -158,6 +162,11 @@ func (c *Client) Preferences() (*api.Preferences, error) {
 func (c *Client) SetPreferences(req api.PreferencesRequest) (*api.Preferences, error) {
 	var resp api.Preferences
 	return &resp, c.do(http.MethodPost, "/preferences", req, &resp)
+}
+
+func (c *Client) Tags() (*api.TagsResponse, error) {
+	var resp api.TagsResponse
+	return &resp, c.do(http.MethodGet, "/tags", nil, &resp)
 }
 
 func (c *Client) Status() (*api.StatusResponse, error) {

@@ -45,7 +45,8 @@ func NewServer(svc *todo.Service) *sdk.Server {
 			"the date it has to be done by for due_for to make its own deadline. today is what has " +
 			"been finished and how many minutes logged so far today; a repeating task carries streak, " +
 			"its occurrences in a row done on time, and done_today once today's is finished; those sort " +
-			"last and cannot be done again until tomorrow.",
+			"last and cannot be done again until tomorrow. Every filter given is applied together, so " +
+			"tag with overdue is what is late in one project.",
 		InputSchema: schemaFor[ListArgs](map[string][]any{
 			"status":     {"open", "done", "all"},
 			"difficulty": difficulties,
@@ -120,6 +121,14 @@ func NewServer(svc *todo.Service) *sdk.Server {
 			"vault — the note holds the thinking, the tasks are what is in flight from it, and " +
 			"todo_list with note set then shows that one workstream.",
 	}, t.link)
+
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "todo_tags",
+		Description: "The tags in use, with how many open and done tasks carry each. A tag is a group that " +
+			"is not a note: house for the renovation, career for the move. Read this before tagging " +
+			"anything, so the same project is not tagged three ways, and use todo_list with tag to " +
+			"see one group.",
+	}, t.tags)
 
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "todo_related",

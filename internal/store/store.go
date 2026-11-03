@@ -137,6 +137,16 @@ var migrations = []string{
 		PRIMARY KEY (task_id, blocker_id)
 	);
 	CREATE INDEX blockers_blocker ON blockers(blocker_id);`,
+
+	// A tag is a group that is not a note. It is a pair of task and word
+	// rather than a column, so a task can carry several, and no table of tags
+	// exists to fall out of step with what the tasks actually carry.
+	`CREATE TABLE task_tags (
+		task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		tag     TEXT NOT NULL,
+		PRIMARY KEY (task_id, tag)
+	);
+	CREATE INDEX task_tags_tag ON task_tags(tag);`,
 }
 
 func (s *Store) migrate(path string) error {
@@ -198,8 +208,8 @@ func (s *Store) snapshotBefore(path string, to int) (string, error) {
 const taskColumns = `id, title, notes, status, difficulty, priority, estimate_minutes, remaining_minutes, due, start_on,
 	recur_kind, recur_rule, mnemo_slug, mnemo_title, pinned_on, created_at, updated_at, done_at, enriched_at`
 
-// Create writes a new task, and what it waits on when BlockedBy names any,
-// as one step.
+// Create writes a new task, its tags, and what it waits on when BlockedBy
+// names any, as one step.
 func (s *Store) Create(t *Task) (*Task, error) {
 	if t.Status == "" {
 		t.Status = StatusOpen
@@ -237,6 +247,11 @@ func (s *Store) Create(t *Task) (*Task, error) {
 			return nil, err
 		}
 	}
+	if len(t.Tags) > 0 {
+		if err := setTags(tx, id, t.Tags); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("creating task: %w", err)
 	}
@@ -267,6 +282,7 @@ type Filter struct {
 	Overdue    bool
 	Linked     bool
 	Note       string
+	Tag        string
 	Recurring  bool
 	Quick      bool
 	Limit      int
@@ -307,6 +323,13 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 	}
 	if f.Note != "" {
 		where, args = append(where, "mnemo_slug = ?"), append(args, f.Note)
+	}
+	if f.Tag != "" {
+		tag, err := NormaliseTag(f.Tag)
+		if err != nil {
+			return nil, err
+		}
+		where, args = append(where, "id IN (SELECT task_id FROM task_tags WHERE tag = ?)"), append(args, tag)
 	}
 	if f.Recurring {
 		where = append(where, "recur_kind IS NOT NULL")
@@ -366,7 +389,8 @@ func (s *Store) List(f Filter) ([]*Task, error) {
 // Edit carries only the fields a caller wants changed. An empty string clears
 // a nullable text field; a zero estimate clears the estimate, and a zero
 // remaining puts the task back to its whole estimate. BlockedBy replaces
-// everything the task waits on, and an empty list clears it.
+// everything the task waits on, and Tags every tag it carries; an empty list
+// clears either.
 type Edit struct {
 	Title      *string
 	Notes      *string
@@ -382,13 +406,15 @@ type Edit struct {
 	MnemoSlug  *string
 	MnemoTitle *string
 	BlockedBy  *[]int64
+	Tags       *[]string
 }
 
 // Empty reports whether the edit would change nothing.
 func (e Edit) Empty() bool {
 	return e.Title == nil && e.Notes == nil && e.Status == nil && e.Difficulty == nil &&
 		e.Priority == nil && e.Estimate == nil && e.Remaining == nil && e.Due == nil && e.Start == nil &&
-		e.RecurKind == nil && e.RecurRule == nil && e.MnemoSlug == nil && e.MnemoTitle == nil && e.BlockedBy == nil
+		e.RecurKind == nil && e.RecurRule == nil && e.MnemoSlug == nil && e.MnemoTitle == nil &&
+		e.BlockedBy == nil && e.Tags == nil
 }
 
 // TitleChanged reports whether this edit rewrites the title, the only change
@@ -451,6 +477,9 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if e.MnemoTitle != nil {
 		t.MnemoTitle = *e.MnemoTitle
 	}
+	if e.Tags != nil {
+		t.Tags = *e.Tags
+	}
 	// A task that has just become recurring drops its start date the way it
 	// drops what was left of it; asking for both at once is refused below.
 	if t.Recurring() && e.Start == nil {
@@ -485,17 +514,21 @@ func (s *Store) Edit(id int64, e Edit) (*Task, error) {
 	if t.Status == StatusOpen && !t.Recurring() {
 		t.DoneAt = nil
 	}
-	if e.BlockedBy == nil {
-		return s.save(t)
+	var also []func(*sql.Tx) error
+	if e.BlockedBy != nil {
+		also = append(also, func(tx *sql.Tx) error { return setBlockers(tx, id, *e.BlockedBy) })
 	}
-	return s.saveWith(t, func(tx *sql.Tx) error { return setBlockers(tx, id, *e.BlockedBy) })
+	if e.Tags != nil {
+		also = append(also, func(tx *sql.Tx) error { return setTags(tx, id, t.Tags) })
+	}
+	return s.saveWith(t, also...)
 }
 
-func (s *Store) save(t *Task) (*Task, error) { return s.saveWith(t, nil) }
+func (s *Store) save(t *Task) (*Task, error) { return s.saveWith(t) }
 
 // saveWith writes the task and whatever else has to change with it in one
 // transaction, so an edit that is refused halfway leaves nothing behind.
-func (s *Store) saveWith(t *Task, also func(*sql.Tx) error) (*Task, error) {
+func (s *Store) saveWith(t *Task, also ...func(*sql.Tx) error) (*Task, error) {
 	t.UpdatedAt = Now()
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -516,8 +549,8 @@ func (s *Store) saveWith(t *Task, also func(*sql.Tx) error) (*Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("saving task %d: %w", t.ID, err)
 	}
-	if also != nil {
-		if err := also(tx); err != nil {
+	for _, step := range also {
+		if err := step(tx); err != nil {
 			return nil, err
 		}
 	}

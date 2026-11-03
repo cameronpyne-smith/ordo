@@ -57,6 +57,7 @@ func newListCmd(configPath *string) *cobra.Command {
 	cmd.Flags().BoolVar(&f.Overdue, "overdue", false, "only tasks past their due date")
 	cmd.Flags().BoolVar(&f.Linked, "linked", false, "only tasks linked to a mnemo note")
 	cmd.Flags().StringVar(&f.Note, "note", "", "only tasks linked to this note, by slug")
+	cmd.Flags().StringVar(&f.Tag, "tag", "", "only tasks carrying this tag")
 	cmd.Flags().BoolVar(&f.Recurring, "recurring", false, "only tasks that repeat")
 	cmd.Flags().StringVar(&f.Difficulty, "difficulty", "", "low, medium or high")
 	cmd.Flags().StringVar(&f.Priority, "priority", "", "low, normal or high")
@@ -113,6 +114,7 @@ func newAddCmd(configPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&every, "every", "", `repeat on a schedule: daily, "weekly on tue", "weekly on mon,thu", "monthly on 1", "monthly on last", "yearly on 03-15", or a fixed cycle: 2w`)
 	cmd.Flags().StringVar(&after, "after", "", "repeat an interval after each completion: 3d, 2w, 1m")
 	cmd.Flags().StringVar(&req.MnemoSlug, "link", "", "slug of the mnemo note this task is about")
+	cmd.Flags().StringSliceVar(&req.Tags, "tag", nil, "a group the task belongs to, like house; repeat for more")
 	return cmd
 }
 
@@ -197,9 +199,10 @@ func newSetCmd(configPath *string) *cobra.Command {
 		Use:   "set <id> <key=value>...",
 		Short: "Change fields on a task; an empty value clears one",
 		Long: "Change fields on a task. Keys: title, notes, status, difficulty, priority, due,\n" +
-			"start, waits_on, estimate, left, every, after. left is what remains of a task\n" +
-			"already started. start holds it out of the plan until that day. waits_on is the\n" +
-			"whole list of tasks it waits on, waits_on=10,11, replacing what it had.\n" +
+			"start, waits_on, tags, estimate, left, every, after. left is what remains of a\n" +
+			"task already started. start holds it out of the plan until that day. waits_on\n" +
+			"is the whole list of tasks it waits on, waits_on=10,11, replacing what it had,\n" +
+			"and tags=house,reno likewise; ordo tag and untag change one at a time.\n" +
 			"An empty value clears the field, for example due= or waits_on=.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -428,6 +431,12 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 				return req, err
 			}
 			req.BlockedBy = &ids
+		case "tags", "tag":
+			tags, err := readTags(value)
+			if err != nil {
+				return req, err
+			}
+			req.Tags = &tags
 		case "every", "after":
 			kind := key
 			if value == "" {
@@ -455,7 +464,7 @@ func parseEdits(pairs []string) (api.EditRequest, error) {
 			}
 			req.RemainingMinutes = &minutes
 		default:
-			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due, start, waits_on, estimate, left, every or after", key)
+			return req, fmt.Errorf("unknown field %q: use title, notes, status, difficulty, priority, due, start, waits_on, tags, estimate, left, every or after", key)
 		}
 	}
 	return req, nil
@@ -539,10 +548,11 @@ func dueCell(t api.Task) string {
 	return date
 }
 
-// titleCell marks a task the enrichment worker has not reached yet, so a bare
-// row reads as pending rather than as deliberately empty.
+// titleCell puts the task's tags in front of its title, and marks a task the
+// enrichment worker has not reached yet, so a bare row reads as pending
+// rather than as deliberately empty.
 func titleCell(t api.Task) string {
-	title := t.Title
+	title := badges(t) + t.Title
 	if t.Status == string(store.StatusDone) {
 		title = "[done] " + title
 	}

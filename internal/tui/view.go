@@ -42,6 +42,9 @@ func (m Model) View() string {
 	if m.mode == modePick {
 		return m.pickView()
 	}
+	if m.mode == modeChoose {
+		return m.chooseView()
+	}
 
 	header := m.header(width)
 	footer := m.footer(width)
@@ -67,7 +70,7 @@ func (m Model) size() (int, int) {
 }
 
 func (m Model) header(width int) string {
-	left := "ordo · " + filters[m.filter].name
+	left := "ordo · " + m.filterName()
 	if m.query != "" && m.mode != modeSearch {
 		left += " · " + searchPrompt + m.query + faintStyle.Render("  esc clears")
 	}
@@ -76,6 +79,27 @@ func (m Model) header(width int) string {
 		right = m.today.Said() + " today · " + right
 	}
 	return pad(left, right, width) + "\n" + rule(width)
+}
+
+// filterName names everything narrowing the list, or "open" when nothing
+// does.
+func (m Model) filterName() string {
+	var parts []string
+	for _, f := range filters[1:] {
+		if f.on(m.active) {
+			parts = append(parts, f.name)
+		}
+	}
+	if m.active.Tag != "" {
+		parts = append(parts, colourOf(m.active.Tag).Render("#"+m.active.Tag))
+	}
+	if m.active.Note != "" {
+		parts = append(parts, noteBadge(m.active.Note))
+	}
+	if len(parts) == 0 {
+		return filters[0].name
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (m Model) countTasks() int {
@@ -141,22 +165,24 @@ func (m Model) renderRow(i, width int) string {
 	if t.DoneToday {
 		title = "✓ " + t.Title
 	}
-	// The link and the pending mark are the two things you scan a row for,
+	// The tags, the link and the pending mark are what you scan a row for,
 	// so a title too long for the terminal loses its tail rather than
-	// pushing them off the edge.
+	// pushing them off the edge. The tags keep their own colours on the
+	// selected row; only the text either side of them goes bold.
 	prefix := fmt.Sprintf("%s%s %s ", marker, faintStyle.Render(fmt.Sprintf("%3d", t.ID)), due)
+	tags := badges(t.Tags)
 	suffix := truncate(m.suffix(t), width/2)
-	room := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
-	line := prefix + truncate(title, max(room, 12))
+	room := width - lipgloss.Width(prefix) - lipgloss.Width(tags) - lipgloss.Width(suffix)
+	title = truncate(title, max(room, 12))
 	switch {
 	case t.DoneToday && i == m.cursor:
-		line = selectStyle.Render(prefix) + doneStyle.Bold(true).Render(truncate(title, max(room, 12)))
+		prefix, title = selectStyle.Render(prefix), doneStyle.Bold(true).Render(title)
 	case t.DoneToday:
-		line = prefix + doneStyle.Render(truncate(title, max(room, 12)))
+		title = doneStyle.Render(title)
 	case i == m.cursor:
-		line = selectStyle.Render(line)
+		prefix, title = selectStyle.Render(prefix), selectStyle.Render(title)
 	}
-	return line + suffix
+	return prefix + tags + title + suffix
 }
 
 // suffix carries what is worth seeing on every row without opening it: why
@@ -171,12 +197,11 @@ func (m Model) suffix(t api.Task) string {
 		out += faintStyle.Render(fmt.Sprintf(" for %d", t.DueFor))
 	}
 	if t.Mnemo != nil {
-		style := linkStyle
-		text := " [[" + t.Mnemo.Slug + "]]"
 		if t.Mnemo.Missing {
-			style, text = brokenStyle, text+" (missing)"
+			out += brokenStyle.Render(" [[" + t.Mnemo.Slug + "]] (missing)")
+		} else {
+			out += " " + noteBadge(t.Mnemo.Slug)
 		}
-		out += style.Render(text)
 	}
 	if !t.Enriched {
 		out += faintStyle.Render(" ~")
@@ -284,21 +309,33 @@ func (m Model) footer(width int) string {
 		return rule(width) + "\n" + errorStyle.Render(fmt.Sprintf("delete %d permanently? this cannot be undone  y/n", m.confirm))
 	}
 	var keys []string
-	for i, f := range filters {
-		label := f.key + " " + f.name
-		if i == m.filter {
-			label = selectStyle.Render(label)
-		} else {
-			label = faintStyle.Render(label)
-		}
-		keys = append(keys, label)
+	for _, f := range filters {
+		keys = append(keys, filterKey(f.key, f.name, f.on(m.active)))
 	}
+	keys = append(keys, valueKey("#", "tag", m.active.Tag, "#"+m.active.Tag), valueKey("@", "note", m.active.Note, m.active.Note))
 	status := m.message
 	if m.failure != "" {
 		status = errorStyle.Render(m.failure)
 	}
 	return rule(width) + "\n" + truncate(strings.Join(keys, "  "), width) + "\n" +
 		pad(faintStyle.Render("/ search · enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit"), status, width)
+}
+
+// filterKey is one filter in the footer, bold while it is on.
+func filterKey(key, name string, on bool) string {
+	if on {
+		return selectStyle.Render(key + " " + name)
+	}
+	return faintStyle.Render(key + " " + name)
+}
+
+// valueKey is a filter that takes a value: it shows the value in its colour
+// while set, and what it is for otherwise.
+func valueKey(key, name, value, shown string) string {
+	if value == "" {
+		return faintStyle.Render(key + " " + name)
+	}
+	return selectStyle.Render(key+" ") + colourOf(value).Bold(true).Render(shown)
 }
 
 func (m Model) help() string {
@@ -312,9 +349,12 @@ func (m Model) help() string {
 		"  which fields put the selected task where it is.",
 		"",
 		headingStyle.Render("moving"),
-		"  j k ↑ ↓   move          g G   first, last",
-		"  1 – 7     filter        r     refresh now",
-		"  /         search the title, notes, note slug and id as you type;",
+		"  j k ↑ ↓   move          g G   first, last        r   refresh now",
+		"  1 – 7     filters. Each toggles, and they combine: 2 then 4 is what",
+		"            is overdue and high priority. 1 clears them all",
+		"  # @       narrow to one tag, or to the tasks of one note, chosen from",
+		"            those in use; choosing the one ticked clears it",
+		"  /         search the title, notes, tags, note slug and id as you type;",
 		"            enter keeps it to act on a match, esc clears it",
 		"",
 		headingStyle.Render("doing"),
@@ -334,9 +374,11 @@ func (m Model) help() string {
 		"",
 		headingStyle.Render("changing a task"),
 		"  enter opens the task. Inside it p and d cycle priority and difficulty,",
-		"  shift steps back, and u s m l r t open a prefilled line for the due date,",
-		"  start date, estimate, what is left, repeat rule and title. A date is day",
-		"  first, 25/09/26, or 2026-09-25. Every press saves; an empty value clears",
+		"  shift steps back, and u s m l r # t open a prefilled line for the due",
+		"  date, start date, estimate, what is left, repeat rule, tags and title.",
+		"  A date is day first, 25/09/26, or 2026-09-25. Tags are words with",
+		"  spaces between, house career, each a group the task belongs to; they",
+		"  show in colour before the title. Every press saves; an empty value clears",
 		"  the field. The estimate stays the first guess once work has started;",
 		"  left is what the plan uses, and clearing it goes back to the estimate.",
 		"  A start date keeps a task out of the plan until that day.",

@@ -12,14 +12,14 @@ import (
 
 const (
 	searchPrompt      = "/ "
-	searchPlaceholder = "title, notes, note slug or id"
+	searchPlaceholder = "title, notes, tags, note slug or id"
 )
 
 // matches says whether a task answers what was typed: a number is the start
 // of an id, and otherwise every word has to turn up somewhere in the title,
-// the notes or the slug of the note it points at, in any order. The notes
-// count because the title is the sentence as said, and the word you
-// remember it by is as likely to be in what was added later.
+// the notes, the tags or the slug of the note it points at, in any order.
+// The notes count because the title is the sentence as said, and the word
+// you remember it by is as likely to be in what was added later.
 func matches(t api.Task, query string) bool {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" {
@@ -31,6 +31,9 @@ func matches(t api.Task, query string) bool {
 	text := t.Title + "\n" + t.Notes
 	if t.Mnemo != nil {
 		text += "\n" + t.Mnemo.Slug
+	}
+	for _, tag := range t.Tags {
+		text += "\n#" + tag
 	}
 	text = strings.ToLower(text)
 	for _, word := range strings.Fields(query) {

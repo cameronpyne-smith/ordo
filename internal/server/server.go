@@ -62,6 +62,7 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("DELETE /tasks/{id}", s.handleDelete)
 	mux.HandleFunc("POST /tasks/{id}/pin", s.handlePin)
 	mux.HandleFunc("POST /tasks/{id}/unpin", s.handleUnpin)
+	mux.HandleFunc("GET /tags", s.handleTags)
 	mux.HandleFunc("GET /today", s.handleToday)
 	mux.HandleFunc("GET /preferences", s.handlePreferences)
 	mux.HandleFunc("POST /preferences", s.handleSetPreferences)
@@ -140,6 +141,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		Overdue:    q.Get("overdue") == "true",
 		Linked:     q.Get("linked") == "true",
 		Note:       q.Get("note"),
+		Tag:        q.Get("tag"),
 		Recurring:  q.Get("recurring") == "true",
 		Quick:      q.Get("quick") == "true",
 	}
@@ -328,6 +330,15 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, api.DeleteResponse{ID: id, Deleted: true})
+}
+
+func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
+	resp, err := s.todo.Tags()
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

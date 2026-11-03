@@ -283,12 +283,13 @@ func (m Model) dayRow(e entry, selected bool, width int) string {
 	}
 	suffix := faintStyle.Render(length)
 	prefix := marker + span + " "
-	room := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
-	line := prefix + truncate(title, max(room, 12))
+	tags := badges(e.block.Task.Tags)
+	room := width - lipgloss.Width(prefix) - lipgloss.Width(tags) - lipgloss.Width(suffix)
+	title = truncate(title, max(room, 12))
 	if selected {
-		line = selectStyle.Render(line)
+		prefix, title = selectStyle.Render(prefix), selectStyle.Render(title)
 	}
-	return line + suffix
+	return prefix + tags + title + suffix
 }
 
 // loggedRow is one thing already done today: ticked when it was finished,

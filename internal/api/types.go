@@ -21,11 +21,14 @@ type Task struct {
 	Blocked          bool   `json:"blocked,omitempty"`
 	Recur            *Recur `json:"recur,omitempty"`
 	Mnemo            *Link  `json:"mnemo,omitempty"`
-	PinnedOn         string `json:"pinned_on,omitempty"`
-	CreatedAt        string `json:"created_at"`
-	UpdatedAt        string `json:"updated_at"`
-	DoneAt           string `json:"done_at,omitempty"`
-	Enriched         bool   `json:"enriched"`
+	// Tags are the groups the task belongs to that are not a note, as
+	// words: house, career.
+	Tags      []string `json:"tags,omitempty"`
+	PinnedOn  string   `json:"pinned_on,omitempty"`
+	CreatedAt string   `json:"created_at"`
+	UpdatedAt string   `json:"updated_at"`
+	DoneAt    string   `json:"done_at,omitempty"`
+	Enriched  bool     `json:"enriched"`
 	// Streak is how many of a repeating task's occurrences in a row were
 	// done on time, and DoneToday says today's is finished. Outcome comes
 	// back only from done, work and undo.
@@ -131,36 +134,50 @@ type LinkRequest struct {
 }
 
 type CreateRequest struct {
-	Title           string  `json:"title"`
-	Notes           string  `json:"notes,omitempty"`
-	Difficulty      string  `json:"difficulty,omitempty"`
-	Priority        string  `json:"priority,omitempty"`
-	EstimateMinutes int     `json:"estimate_minutes,omitempty"`
-	Due             string  `json:"due,omitempty"`
-	Start           string  `json:"start,omitempty"`
-	RecurKind       string  `json:"recur_kind,omitempty"`
-	RecurRule       string  `json:"recur_rule,omitempty"`
-	MnemoSlug       string  `json:"mnemo_slug,omitempty"`
-	BlockedBy       []int64 `json:"blocked_by,omitempty"`
+	Title           string   `json:"title"`
+	Notes           string   `json:"notes,omitempty"`
+	Difficulty      string   `json:"difficulty,omitempty"`
+	Priority        string   `json:"priority,omitempty"`
+	EstimateMinutes int      `json:"estimate_minutes,omitempty"`
+	Due             string   `json:"due,omitempty"`
+	Start           string   `json:"start,omitempty"`
+	RecurKind       string   `json:"recur_kind,omitempty"`
+	RecurRule       string   `json:"recur_rule,omitempty"`
+	MnemoSlug       string   `json:"mnemo_slug,omitempty"`
+	BlockedBy       []int64  `json:"blocked_by,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
 }
 
 // EditRequest changes only the fields it carries. An absent or null field is
 // untouched; an empty string clears a text field, a zero estimate clears the
 // estimate and a zero remaining puts the task back to its whole estimate.
-// BlockedBy replaces everything the task waits on; an empty list clears it.
+// BlockedBy replaces everything the task waits on, and Tags every tag it
+// carries; an empty list clears either.
 type EditRequest struct {
-	Title            *string  `json:"title,omitempty"`
-	Notes            *string  `json:"notes,omitempty"`
-	Status           *string  `json:"status,omitempty"`
-	Difficulty       *string  `json:"difficulty,omitempty"`
-	Priority         *string  `json:"priority,omitempty"`
-	EstimateMinutes  *int     `json:"estimate_minutes,omitempty"`
-	RemainingMinutes *int     `json:"remaining_minutes,omitempty"`
-	Due              *string  `json:"due,omitempty"`
-	Start            *string  `json:"start,omitempty"`
-	RecurKind        *string  `json:"recur_kind,omitempty"`
-	RecurRule        *string  `json:"recur_rule,omitempty"`
-	BlockedBy        *[]int64 `json:"blocked_by,omitempty"`
+	Title            *string   `json:"title,omitempty"`
+	Notes            *string   `json:"notes,omitempty"`
+	Status           *string   `json:"status,omitempty"`
+	Difficulty       *string   `json:"difficulty,omitempty"`
+	Priority         *string   `json:"priority,omitempty"`
+	EstimateMinutes  *int      `json:"estimate_minutes,omitempty"`
+	RemainingMinutes *int      `json:"remaining_minutes,omitempty"`
+	Due              *string   `json:"due,omitempty"`
+	Start            *string   `json:"start,omitempty"`
+	RecurKind        *string   `json:"recur_kind,omitempty"`
+	RecurRule        *string   `json:"recur_rule,omitempty"`
+	BlockedBy        *[]int64  `json:"blocked_by,omitempty"`
+	Tags             *[]string `json:"tags,omitempty"`
+}
+
+// TagCount is one tag in use and how many tasks carry it.
+type TagCount struct {
+	Tag  string `json:"tag"`
+	Open int    `json:"open"`
+	Done int    `json:"done,omitempty"`
+}
+
+type TagsResponse struct {
+	Tags []TagCount `json:"tags"`
 }
 
 type DoneRequest struct {

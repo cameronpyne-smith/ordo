@@ -68,6 +68,10 @@ ordo list                        # open tasks, in order
 ordo list --overdue --limit 5
 ordo list --recurring
 ordo list --note career-transition-quantitative-researcher
+ordo list --tag house --overdue  # filters combine
+ordo add "Paint the living room" --tag house
+ordo tag 4 house reno            # add tags; untag takes them off
+ordo tags                        # the tags in use, with counts
 ordo set 4 priority=high due=    # an empty value clears a field
 ordo set 12 waits_on=10,11       # the whole list; waits_on= clears it
 ordo set 12 start=15/10/26       # not in the plan before then
@@ -250,6 +254,29 @@ nothing is marked missing — "I could not ask" is not "it is gone" — and ever
 command except the three link ones works as usual. `ordo unlink` works even
 then: cutting a link is ordo's own business.
 
+## Tags
+
+A tag is a group that is not a note: `house` for the renovation, `career`
+for the move. A note holds thinking; a tag is only a word, so there is no
+table of tags to keep tidy. One exists while some task carries it and is
+gone when the last one drops it.
+
+```sh
+ordo add "Paint the living room" --tag house --tag reno
+ordo tag 4 house                 # add one
+ordo untag 4 reno                # take one off
+ordo set 4 tags=house,garden     # the whole list; tags= clears it
+ordo tags                        # what is in use
+ordo list --tag house            # one group
+ordo list --tag house --overdue  # what is late in it
+```
+
+A tag is stored as one lower-case word of letters, digits and dashes, however
+it was typed: `House` is `house`, `#house` is `house`, and `house reno` is
+refused rather than guessed at (`house-reno` is the tag). Tags read in front of
+the title everywhere, `#house Paint the living room`, in colour in the
+terminal. The local model never writes tags; they are yours and Claude's.
+
 ## The terminal
 
 Bare `ordo` opens the list in the terminal. It is a thin client like every
@@ -264,32 +291,39 @@ daemon's order is kept inside it.
 ordo · open                                                            6 shown
 ────────────────────────────────────────────────────────────────────────────
 overdue
-▸  11 2 days ago  ! Send the quant CV to the recrui [[career-transition-quant…
+▸  11 2 days ago  #career ! Send the quant CV to the re [[career-transition-q…
 today
    10 Today       Water the plants every 3 days
 this week
     9 Tomorrow    Put the bins out every tuesday
 someday
-   14            Rewrite the latent pricing model [[latent]] (missing)
+   14            #house Paint the living room
    16            Renew the passport ~
 ────────────────────────────────────────────────────────────────────────────
 Send the quant CV to the recruiter by Friday
 overdue by 2 days · high priority · low difficulty · a quick win
 [[career-transition-quantitative-researcher]] The quant plan
 ────────────────────────────────────────────────────────────────────────────
-1 open  2 overdue  3 quick wins  4 high priority  5 linked  6 recurring  7 done
+1 open  2 overdue  3 quick wins  4 high priority  5 linked  6 recurring  7 done  # tag  @ note
 / search · enter open · a add · d done · w worked · u undo · e enrich · l note · p pin · t today · x delete · q quit
 ```
 
 The line under the list is the point of the thing: it names the fields that
 put the selected task where it is, so a position never has to be taken on
-trust. `~` means the model has not read the task yet.
+trust. `~` means the model has not read the task yet. Tags sit in front of
+the title in colour, and a linked note's `[[slug]]` takes a colour of its own
+the same way, so a project is recognisable before it is read.
 
 The number keys are the filters, and they are filters rather than a
 conversation on purpose — "I have twenty minutes" is `3`, not a question.
-`/` searches within whichever filter is on, narrowing the list as you type:
-every word has to appear somewhere in the title, the notes or the slug of
-the linked note, and a number also finds the ids that start with it. Enter
+Each key toggles, and they combine: `2` then `4` is what is overdue and
+high priority, and `1` clears them all. `#` and `@` narrow to one tag or to
+the tasks of one note, chosen from those in use rather than typed; the
+header names whatever is on, `overdue · #house`, and choosing the ticked one
+again clears it.
+`/` searches within whichever filters are on, narrowing the list as you type:
+every word has to appear somewhere in the title, the notes, the tags or the
+slug of the linked note, and a number also finds the ids that start with it. Enter
 keeps the search so the match can be opened or done, and esc clears it.
 `a` adds a task: type the sentence and the daemon extracts the rest of it,
 so the new row appears bare and fills in a second or two later while you
@@ -325,8 +359,9 @@ back.
 `enter` opens the selected task. Priority and difficulty are enums, so `p`
 and `d` cycle them and shift steps back; every other field opens a line
 prefilled with what is already there, because a due date is nearly always a
-correction rather than a retype. Each press saves, and the pane redraws from
-what the daemon stored rather than from what was typed.
+correction rather than a retype; `#` is the tags, as words with spaces
+between. Each press saves, and the pane redraws from what the daemon stored
+rather than from what was typed.
 
 A title too long for its row in the list is wrapped whole at the top of the
 open task, and editing it scrolls the line sideways rather than off the screen.
@@ -530,7 +565,8 @@ finished today and would show the same tasks twice.
 The daemon serves MCP at `/mcp` on the same port, behind the same bearer
 token, so a Claude session gets the same operations as the CLI: `todo_list`,
 `todo_add`, `todo_done`, `todo_work`, `todo_undo`, `todo_set`, `todo_link`,
-`todo_related`, `todo_delete`, `todo_today`, `todo_pin`, `todo_preferences`.
+`todo_related`, `todo_tags`, `todo_delete`, `todo_today`, `todo_pin`,
+`todo_preferences`.
 
 ```sh
 claude mcp add --transport http ordo http://100.103.58.27:7930/mcp \

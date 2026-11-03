@@ -51,6 +51,7 @@ var fields = []field{
 	{"estimate", "m", showEstimate, textEstimate, nil},
 	{"left", "l", showLeft, textLeft, func(t api.Task) bool { return t.RemainingMinutes > 0 }},
 	{"repeats", "r", showRepeats, textRepeats, nil},
+	{"tags", "#", func(t api.Task) string { return strings.TrimSpace(badges(t.Tags)) }, func(t api.Task) string { return strings.Join(t.Tags, " ") }, nil},
 	{"notes", "n", func(t api.Task) string { return preview(t.Notes) }, func(t api.Task) string { return t.Notes }, nil},
 	{"title", "t", func(t api.Task) string { return t.Title }, func(t api.Task) string { return t.Title }, nil},
 }
@@ -240,6 +241,12 @@ func editRequest(name, value string) (api.EditRequest, error) {
 		req.Difficulty = &value
 	case "notes":
 		req.Notes = &value
+	case "tags":
+		tags := strings.FieldsFunc(value, func(r rune) bool { return r == ' ' || r == ',' })
+		if tags == nil {
+			tags = []string{}
+		}
+		req.Tags = &tags
 	case "title":
 		if value == "" {
 			return req, fmt.Errorf("a task needs a title")
@@ -390,6 +397,6 @@ func (m Model) editFooter(width int) string {
 	if m.failure != "" {
 		status = errorStyle.Render(m.failure)
 	}
-	keys := faintStyle.Render("p d cycle · shift reverses · u s m l r n t w edit · esc back · ? help · q quit")
+	keys := faintStyle.Render("p d cycle · shift reverses · u s m l r # n t w edit · esc back · ? help · q quit")
 	return rule(width) + "\n" + pad(keys, status, width)
 }

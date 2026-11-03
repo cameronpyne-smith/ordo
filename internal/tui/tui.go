@@ -47,25 +47,41 @@ const (
 	modeNotes
 	modePick
 	modeSearch
+	modeChoose
 )
 
 // The filters are the whole of the TUI's cleverness, deliberately: each one
 // is a question you ask the list often enough to want a key for, and each is
-// a plain server-side filter rather than anything that has to think.
+// a plain server-side filter rather than anything that has to think. They
+// are a set: each key toggles its own field of the one Filter sent to the
+// daemon, which applies them together, so "what is late for the house" is
+// two keys. The tag and the note are fields of the same Filter, set through
+// the chooser since they take a value.
 type namedFilter struct {
-	key  string
-	name string
-	f    client.Filter
+	key    string
+	name   string
+	on     func(client.Filter) bool
+	toggle func(*client.Filter)
 }
 
 var filters = []namedFilter{
-	{"1", "open", client.Filter{}},
-	{"2", "overdue", client.Filter{Overdue: true}},
-	{"3", "quick wins", client.Filter{Quick: true}},
-	{"4", "high priority", client.Filter{Priority: "high"}},
-	{"5", "linked", client.Filter{Linked: true}},
-	{"6", "recurring", client.Filter{Recurring: true}},
-	{"7", "done", client.Filter{Status: "done"}},
+	{"1", "open", func(f client.Filter) bool { return f == client.Filter{} }, func(f *client.Filter) { *f = client.Filter{} }},
+	{"2", "overdue", func(f client.Filter) bool { return f.Overdue }, func(f *client.Filter) { f.Overdue = !f.Overdue }},
+	{"3", "quick wins", func(f client.Filter) bool { return f.Quick }, func(f *client.Filter) { f.Quick = !f.Quick }},
+	{"4", "high priority", func(f client.Filter) bool { return f.Priority == "high" },
+		func(f *client.Filter) { f.Priority = flip(f.Priority, "high") }},
+	{"5", "linked", func(f client.Filter) bool { return f.Linked }, func(f *client.Filter) { f.Linked = !f.Linked }},
+	{"6", "recurring", func(f client.Filter) bool { return f.Recurring }, func(f *client.Filter) { f.Recurring = !f.Recurring }},
+	{"7", "done", func(f client.Filter) bool { return f.Status == "done" },
+		func(f *client.Filter) { f.Status = flip(f.Status, "done") }},
+}
+
+// flip sets a field to value, or clears it when it already is.
+func flip(current, value string) string {
+	if current == value {
+		return ""
+	}
+	return value
 }
 
 // row is one printed line: either a section heading or a task under it.
@@ -83,7 +99,7 @@ type Model struct {
 	today  *api.Tally
 	rows   []row
 	cursor int
-	filter int
+	active client.Filter
 	query  string
 
 	mode      mode
@@ -105,6 +121,10 @@ type Model struct {
 	pickFrom   []api.Task
 	pickTicked map[int64]bool
 	pickCursor int
+
+	chooseKind   string
+	choices      []choice
+	chooseCursor int
 
 	took     api.Task
 	tookFrom mode
@@ -181,7 +201,7 @@ func tick(d time.Duration) tea.Cmd {
 }
 
 func (m Model) fetch() tea.Cmd {
-	f := filters[m.filter].f
+	f := m.active
 	c := m.client
 	return func() tea.Msg {
 		resp, err := c.List(f)
@@ -204,6 +224,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.sizeInput(pickPrompt)
 		case modeSearch:
 			m = m.sizeInput(searchPrompt)
+		case modeChoose:
+			m = m.sizeInput(m.chooseKind + ": ")
 		}
 		return m, nil
 
@@ -225,6 +247,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pickMsg:
 		return m.applyPick(msg), nil
+
+	case chooseMsg:
+		return m.applyChoose(msg), nil
 
 	case dayActedMsg:
 		if msg.err != nil {
@@ -380,6 +405,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyPick(msg)
 	case modeSearch:
 		return m.keySearch(msg)
+	case modeChoose:
+		return m.keyChoose(msg)
 	case modeHelp:
 		m.mode, m.helpFrom = m.helpFrom, modeList
 		return m, nil
@@ -392,6 +419,10 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode, m.helpFrom = modeHelp, modeList
 	case "/":
 		return m.openSearch()
+	case "#":
+		return m.openChoose(chooseTag)
+	case "@":
+		return m.openChoose(chooseNote)
 	case "esc":
 		if m.query != "" {
 			m.query = ""
@@ -482,9 +513,10 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.mode, m.confirm = modeConfirm, t.ID
 	default:
-		for i, f := range filters {
+		for _, f := range filters {
 			if msg.String() == f.key {
-				m.filter, m.cursor, m.message = i, 0, ""
+				f.toggle(&m.active)
+				m.cursor, m.message = 0, ""
 				return m, m.fetch()
 			}
 		}

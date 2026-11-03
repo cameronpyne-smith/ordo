@@ -140,6 +140,7 @@ func (s *Service) Create(ctx context.Context, req api.CreateRequest) (api.Task, 
 		MnemoSlug:       slug,
 		MnemoTitle:      title,
 		BlockedBy:       blockers,
+		Tags:            req.Tags,
 	})
 	if err != nil {
 		return api.Task{}, err
@@ -296,6 +297,16 @@ func (s *Service) Related(ctx context.Context, id int64) (api.RelatedResponse, e
 		Links:     note.Links,
 		Backlinks: note.Backlinks,
 	}, nil
+}
+
+// Tags is every tag in use, which is what a chooser offers and what a model
+// picks from so the same project is not tagged three ways.
+func (s *Service) Tags() (api.TagsResponse, error) {
+	counts, err := s.store.Tags()
+	if err != nil {
+		return api.TagsResponse{}, err
+	}
+	return api.FromTags(counts), nil
 }
 
 func (s *Service) Status() (api.StatusResponse, error) {
