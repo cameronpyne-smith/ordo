@@ -311,8 +311,12 @@ overdue by 2 days · high priority · low difficulty · a quick win
 The line under the list is the point of the thing: it names the fields that
 put the selected task where it is, so a position never has to be taken on
 trust. `~` means the model has not read the task yet. Tags sit in front of
-the title in colour, and a linked note's `[[slug]]` takes a colour of its own
-the same way, so a project is recognisable before it is read.
+the title, each in a colour of its own that the daemon gives out so no two
+tags in use share one, and a linked note's `[[slug]]` is always cyan, so a
+project is recognisable before it is read and a note is never taken for a
+tag. The tag colours are fixed ones, chosen apart from what the terminal's
+own already mean here: red overdue, green done, yellow a missing note,
+magenta a heading, cyan a link.
 
 The number keys are the filters, and they are filters rather than a
 conversation on purpose — "I have twenty minutes" is `3`, not a question.

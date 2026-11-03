@@ -10,17 +10,40 @@ import (
 	"github.com/cameronpyne-smith/ordo/internal/store"
 )
 
-// palette is the colours a badge can take: the terminal's own, so they sit
-// with the rest of the screen in whatever theme it has, less the red that
-// means overdue. Which one a tag gets is the daemon's decision, made over
-// every tag in use so they are told apart; a note's colour is hashed from
-// its slug, since notes are fewer and read in brackets anyway.
-var palette = [store.Colours]lipgloss.Color{"2", "3", "4", "5", "6", "10", "11", "12", "13", "14"}
+// The terminal's own colours each mean one thing here, and a tag must not
+// be mistaken for any of them:
+//
+//	red      1   overdue, and an error in the footer
+//	green    2   done: a finished row, and a repeating task done today
+//	yellow   3   a link whose note has gone
+//	magenta  5   section headings
+//	cyan     6   a link to a note
+//	white/grey   ordinary and faint text
+//
+// So the tags take fixed colours from the 256-colour table instead, chosen
+// to be told apart from those and from each other, and readable on a dark
+// or a light background. They do not follow the terminal's theme, which is
+// the price of ten colours none of which is a meaning already taken. Which
+// one a tag gets is the daemon's decision, made over every tag in use.
+var palette = [store.Colours]lipgloss.Color{
+	"208", // orange
+	"33",  // azure
+	"135", // violet
+	"211", // pink
+	"130", // brown
+	"67",  // slate blue
+	"183", // lavender
+	"216", // apricot
+	"63",  // indigo
+	"132", // plum
+}
 
 func colourAt(slot int) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(palette[((slot%len(palette))+len(palette))%len(palette)])
 }
 
+// colourOf is a colour from the word alone, for a tag the daemon has not
+// placed yet.
 func colourOf(word string) lipgloss.Style {
 	h := fnv.New32a()
 	h.Write([]byte(word))
@@ -59,7 +82,8 @@ func (m Model) badges(tags []string) string {
 	return b.String()
 }
 
-// noteBadge is a linked note as it reads on a row and in the header.
+// noteBadge is a linked note as it reads on a row and in the header: always
+// the link colour, so a note is never taken for a tag.
 func noteBadge(slug string) string {
-	return colourOf(slug).Render("[[" + slug + "]]")
+	return linkStyle.Render("[[" + slug + "]]")
 }

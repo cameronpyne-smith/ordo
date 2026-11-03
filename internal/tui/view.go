@@ -315,7 +315,7 @@ func (m Model) footer(width int) string {
 		keys = append(keys, filterKey(f.key, f.name, f.on(m.active)))
 	}
 	keys = append(keys, valueKey("#", "tag", m.active.Tag, "#"+m.active.Tag, m.tagStyle(m.active.Tag)),
-		valueKey("@", "note", m.active.Note, m.active.Note, colourOf(m.active.Note)))
+		valueKey("@", "note", m.active.Note, m.active.Note, linkStyle))
 	status := m.message
 	if m.failure != "" {
 		status = errorStyle.Render(m.failure)
