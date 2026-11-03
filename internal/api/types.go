@@ -169,11 +169,14 @@ type EditRequest struct {
 	Tags             *[]string `json:"tags,omitempty"`
 }
 
-// TagCount is one tag in use and how many tasks carry it.
+// TagCount is one tag in use, how many tasks carry it, and Colour, the slot
+// a surface shows it in, told apart from every other tag's while there are
+// slots to go round.
 type TagCount struct {
-	Tag  string `json:"tag"`
-	Open int    `json:"open"`
-	Done int    `json:"done,omitempty"`
+	Tag    string `json:"tag"`
+	Open   int    `json:"open"`
+	Done   int    `json:"done,omitempty"`
+	Colour int    `json:"colour"`
 }
 
 type TagsResponse struct {
@@ -192,10 +195,13 @@ type WorkRequest struct {
 	Left    *int `json:"left,omitempty"`
 }
 
+// ListResponse carries the tags in use alongside the tasks, whatever the
+// filter, so a surface can colour a row's tags without a second call.
 type ListResponse struct {
-	Tasks []Task `json:"tasks"`
-	Count int    `json:"count"`
-	Today *Tally `json:"today,omitempty"`
+	Tasks []Task     `json:"tasks"`
+	Count int        `json:"count"`
+	Today *Tally     `json:"today,omitempty"`
+	Tags  []TagCount `json:"tags,omitempty"`
 }
 
 type DeleteResponse struct {

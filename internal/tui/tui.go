@@ -95,12 +95,13 @@ func (r row) isTask() bool { return r.heading == "" }
 type Model struct {
 	client *client.Client
 
-	tasks  []api.Task
-	today  *api.Tally
-	rows   []row
-	cursor int
-	active client.Filter
-	query  string
+	tasks   []api.Task
+	today   *api.Tally
+	colours map[string]int
+	rows    []row
+	cursor  int
+	active  client.Filter
+	query   string
 
 	mode      mode
 	input     textinput.Model
@@ -324,7 +325,7 @@ func (m Model) applyTasks(msg tasksMsg) Model {
 		return m
 	}
 	m.failure = ""
-	m.tasks, m.today = msg.resp.Tasks, msg.resp.Today
+	m.tasks, m.today, m.colours = msg.resp.Tasks, msg.resp.Today, colours(msg.resp.Tags)
 	m = m.relayout()
 	m.leaving = 0
 	m.pending = false

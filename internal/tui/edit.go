@@ -51,12 +51,21 @@ var fields = []field{
 	{"estimate", "m", showEstimate, textEstimate, nil},
 	{"left", "l", showLeft, textLeft, func(t api.Task) bool { return t.RemainingMinutes > 0 }},
 	{"repeats", "r", showRepeats, textRepeats, nil},
-	{"tags", "#", func(t api.Task) string { return strings.TrimSpace(badges(t.Tags)) }, func(t api.Task) string { return strings.Join(t.Tags, " ") }, nil},
+	{"tags", "#", showTags, func(t api.Task) string { return strings.Join(t.Tags, " ") }, nil},
 	{"notes", "n", func(t api.Task) string { return preview(t.Notes) }, func(t api.Task) string { return t.Notes }, nil},
 	{"title", "t", func(t api.Task) string { return t.Title }, func(t api.Task) string { return t.Title }, nil},
 }
 
 func (f field) enum() bool { return f.text == nil }
+
+// showTags is the tags row as read: plain here, since the colours belong to
+// the model and the row is coloured when it is drawn.
+func showTags(t api.Task) string {
+	if len(t.Tags) == 0 {
+		return ""
+	}
+	return "#" + strings.Join(t.Tags, " #")
+}
 
 func showEstimate(t api.Task) string {
 	if t.EstimateMinutes == 0 {
@@ -319,6 +328,9 @@ func (m Model) editBody(width int) string {
 			continue
 		}
 		value := f.show(m.edit)
+		if f.name == "tags" {
+			value = strings.TrimSpace(m.badges(m.edit.Tags))
+		}
 		if value == "" {
 			value = faintStyle.Render("—")
 		}

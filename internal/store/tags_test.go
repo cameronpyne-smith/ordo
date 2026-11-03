@@ -85,14 +85,47 @@ func TestTagsFilterAndCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[{career 0 1} {diy 1 0} {house 2 0}]"
-	if got := fmt.Sprint(counts); got != want {
-		t.Fatalf("tags = %s, want %s", got, want)
+	var said []string
+	for _, c := range counts {
+		said = append(said, fmt.Sprintf("%s %d %d", c.Tag, c.Open, c.Done))
+	}
+	if got := fmt.Sprint(said); got != "[career 0 1 diy 1 0 house 2 0]" {
+		t.Fatalf("tags = %s", got)
 	}
 	if err := st.Delete(shelves.ID); err != nil {
 		t.Fatal(err)
 	}
-	if counts, _ = st.Tags(); fmt.Sprint(counts) != "[{career 0 1} {house 1 0}]" {
+	if counts, _ = st.Tags(); len(counts) != 2 || counts[1].Tag != "house" || counts[1].Open != 1 {
 		t.Fatalf("after deleting the shelves, tags = %v; diy should have gone with them", counts)
+	}
+}
+
+// Tags that hash to the same colour are still told apart, and a tag keeps
+// its colour when a later one arrives.
+func TestTagsGetDistinctColours(t *testing.T) {
+	fixedNow(t, "2026-09-20T09:00:00Z")
+	st := open(t)
+	create(t, st, &Task{Title: "Rent", Tags: []string{"rent"}})
+	fixedNow(t, "2026-09-21T09:00:00Z")
+	create(t, st, &Task{Title: "Quant", Tags: []string{"quant"}})
+	before, err := st.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before[0].Colour == before[1].Colour {
+		t.Fatalf("quant and rent share colour %d", before[0].Colour)
+	}
+	fixedNow(t, "2026-09-22T09:00:00Z")
+	create(t, st, &Task{Title: "House", Tags: []string{"house"}})
+	after, _ := st.Tags()
+	if after[1].Colour != before[0].Colour || after[2].Colour != before[1].Colour {
+		t.Fatalf("a new tag changed the colours of the old ones: %v then %v", before, after)
+	}
+	seen := map[int]bool{}
+	for _, c := range after {
+		if seen[c.Colour] {
+			t.Fatalf("three tags, two of one colour: %v", after)
+		}
+		seen[c.Colour] = true
 	}
 }

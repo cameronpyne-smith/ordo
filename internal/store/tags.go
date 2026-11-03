@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"strings"
 )
@@ -96,31 +97,66 @@ func (s *Store) tags(tasks []*Task) error {
 	return rows.Err()
 }
 
-// TagCount is one tag in use and how many tasks carry it, open and done.
+// TagCount is one tag in use, how many tasks carry it, open and done, and
+// the colour it shows in.
 type TagCount struct {
-	Tag  string
-	Open int
-	Done int
+	Tag    string
+	Open   int
+	Done   int
+	Colour int
 }
 
-// Tags is every tag some task carries, in alphabetical order.
+// Colours is how many colours a surface has for tags. A colour is given out
+// here rather than in the terminal because telling tags apart needs the
+// whole set, which only the daemon has.
+const Colours = 10
+
+// Tags is every tag some task carries, in alphabetical order, each with its
+// colour.
 func (s *Store) Tags() ([]TagCount, error) {
 	rows, err := s.db.Query(`SELECT g.tag,
 		COUNT(*) FILTER (WHERE t.status = ?),
-		COUNT(*) FILTER (WHERE t.status = ?)
+		COUNT(*) FILTER (WHERE t.status = ?),
+		MIN(t.created_at)
 		FROM task_tags g JOIN tasks t ON t.id = g.task_id
-		GROUP BY g.tag ORDER BY g.tag`, string(StatusOpen), string(StatusDone))
+		GROUP BY g.tag ORDER BY MIN(t.created_at), g.tag`, string(StatusOpen), string(StatusDone))
 	if err != nil {
 		return nil, fmt.Errorf("listing tags: %w", err)
 	}
 	defer rows.Close()
 	out := []TagCount{}
+	var first string
 	for rows.Next() {
 		var c TagCount
-		if err := rows.Scan(&c.Tag, &c.Open, &c.Done); err != nil {
+		if err := rows.Scan(&c.Tag, &c.Open, &c.Done, &first); err != nil {
 			return nil, fmt.Errorf("listing tags: %w", err)
 		}
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	colour(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].Tag < out[j].Tag })
+	return out, nil
+}
+
+// colour gives each tag a colour, in the order the tags came into use. A
+// tag takes the colour its name hashes to when no earlier tag has it, and
+// the next free one otherwise, so tags are told apart up to the number of
+// colours there are, and a new tag never changes the colour of one already
+// in use. Hashing first means a tag's colour is usually the same on a fresh
+// database too.
+func colour(tags []TagCount) {
+	taken := make([]bool, Colours)
+	for i := range tags {
+		h := fnv.New32a()
+		h.Write([]byte(tags[i].Tag))
+		slot := int(h.Sum32() % Colours)
+		for probe := 0; probe < Colours && taken[slot]; probe++ {
+			slot = (slot + 1) % Colours
+		}
+		taken[slot] = true
+		tags[i].Colour = slot
+	}
 }

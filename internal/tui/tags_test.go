@@ -124,18 +124,19 @@ func TestTagsEditAsOneLine(t *testing.T) {
 	}
 }
 
-// A tag's colour comes from the tag alone, so it is the same everywhere.
-func TestATagKeepsItsColour(t *testing.T) {
-	if colourOf("house").GetForeground() != colourOf("house").GetForeground() {
-		t.Fatal("the same tag got two colours")
+// A tag is coloured as the daemon said once the list has come back, and
+// from its name until then.
+func TestTagsTakeTheDaemonsColours(t *testing.T) {
+	m := New(nil)
+	hashed := m.tagStyle("quant").GetForeground()
+	m = m.applyTasks(tasksMsg{resp: &api.ListResponse{
+		Tasks: []api.Task{task(1, "Quant", func(x *api.Task) { x.Tags = []string{"quant"} })},
+		Tags:  []api.TagCount{{Tag: "quant", Open: 1, Colour: 7}, {Tag: "rent", Open: 1, Colour: 8}},
+	}})
+	if got := m.tagStyle("quant").GetForeground(); got != palette[7] {
+		t.Fatalf("quant is %v, want slot 7 (%v); hashed it was %v", got, palette[7], hashed)
 	}
-	different := false
-	for _, other := range []string{"career", "reno", "diy", "admin", "garden"} {
-		if colourOf(other).GetForeground() != colourOf("house").GetForeground() {
-			different = true
-		}
-	}
-	if !different {
-		t.Fatal("every tag got the same colour")
+	if m.tagStyle("quant").GetForeground() == m.tagStyle("rent").GetForeground() {
+		t.Fatal("two tags given different slots show the same colour")
 	}
 }

@@ -64,7 +64,7 @@ func (m Model) openChoose(kind string) (tea.Model, tea.Cmd) {
 func tagChoices(tags []api.TagCount) []choice {
 	out := []choice{}
 	for _, t := range tags {
-		out = append(out, choice{value: t.Tag, label: colourOf(t.Tag).Render("#" + t.Tag), count: t.Open})
+		out = append(out, choice{value: t.Tag, label: colourAt(t.Colour).Render("#" + t.Tag), count: t.Open})
 	}
 	return out
 }

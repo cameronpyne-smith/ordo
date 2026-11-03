@@ -83,7 +83,7 @@ func fromDeps(deps []store.Dep) []Dep {
 func FromTags(counts []store.TagCount) TagsResponse {
 	out := TagsResponse{Tags: make([]TagCount, 0, len(counts))}
 	for _, c := range counts {
-		out.Tags = append(out.Tags, TagCount{Tag: c.Tag, Open: c.Open, Done: c.Done})
+		out.Tags = append(out.Tags, TagCount{Tag: c.Tag, Open: c.Open, Done: c.Done, Colour: c.Colour})
 	}
 	return out
 }

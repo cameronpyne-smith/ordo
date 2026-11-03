@@ -283,7 +283,7 @@ func (m Model) dayRow(e entry, selected bool, width int) string {
 	}
 	suffix := faintStyle.Render(length)
 	prefix := marker + span + " "
-	tags := badges(e.block.Task.Tags)
+	tags := m.badges(e.block.Task.Tags)
 	room := width - lipgloss.Width(prefix) - lipgloss.Width(tags) - lipgloss.Width(suffix)
 	title = truncate(title, max(room, 12))
 	if selected {

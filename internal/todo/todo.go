@@ -107,7 +107,11 @@ func (s *Service) List(ctx context.Context, f store.Filter) (api.ListResponse, e
 		return api.ListResponse{}, err
 	}
 	_, tally := api.FromLogged(logged)
-	return api.ListResponse{Tasks: out, Count: len(out), Today: tally}, nil
+	tags, err := s.store.Tags()
+	if err != nil {
+		return api.ListResponse{}, err
+	}
+	return api.ListResponse{Tasks: out, Count: len(out), Today: tally, Tags: api.FromTags(tags).Tags}, nil
 }
 
 func (s *Service) Get(id int64) (api.Task, error) {

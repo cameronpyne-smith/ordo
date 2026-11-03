@@ -91,7 +91,7 @@ func (m Model) filterName() string {
 		}
 	}
 	if m.active.Tag != "" {
-		parts = append(parts, colourOf(m.active.Tag).Render("#"+m.active.Tag))
+		parts = append(parts, m.tag(m.active.Tag))
 	}
 	if m.active.Note != "" {
 		parts = append(parts, noteBadge(m.active.Note))
@@ -170,7 +170,7 @@ func (m Model) renderRow(i, width int) string {
 	// pushing them off the edge. The tags keep their own colours on the
 	// selected row; only the text either side of them goes bold.
 	prefix := fmt.Sprintf("%s%s %s ", marker, faintStyle.Render(fmt.Sprintf("%3d", t.ID)), due)
-	tags := badges(t.Tags)
+	tags := m.badges(t.Tags)
 	suffix := truncate(m.suffix(t), width/2)
 	room := width - lipgloss.Width(prefix) - lipgloss.Width(tags) - lipgloss.Width(suffix)
 	title = truncate(title, max(room, 12))
@@ -314,7 +314,8 @@ func (m Model) footer(width int) string {
 	for _, f := range filters {
 		keys = append(keys, filterKey(f.key, f.name, f.on(m.active)))
 	}
-	keys = append(keys, valueKey("#", "tag", m.active.Tag, "#"+m.active.Tag), valueKey("@", "note", m.active.Note, m.active.Note))
+	keys = append(keys, valueKey("#", "tag", m.active.Tag, "#"+m.active.Tag, m.tagStyle(m.active.Tag)),
+		valueKey("@", "note", m.active.Note, m.active.Note, colourOf(m.active.Note)))
 	status := m.message
 	if m.failure != "" {
 		status = errorStyle.Render(m.failure)
@@ -333,11 +334,11 @@ func filterKey(key, name string, on bool) string {
 
 // valueKey is a filter that takes a value: it shows the value in its colour
 // while set, and what it is for otherwise.
-func valueKey(key, name, value, shown string) string {
+func valueKey(key, name, value, shown string, style lipgloss.Style) string {
 	if value == "" {
 		return faintStyle.Render(key + " " + name)
 	}
-	return selectStyle.Render(key+" ") + colourOf(value).Bold(true).Render(shown)
+	return selectStyle.Render(key+" ") + style.Bold(true).Render(shown)
 }
 
 func (m Model) help() string {
