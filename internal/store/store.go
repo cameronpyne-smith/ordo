@@ -44,6 +44,10 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := s.colourTags(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -147,6 +151,15 @@ var migrations = []string{
 		PRIMARY KEY (task_id, tag)
 	);
 	CREATE INDEX task_tags_tag ON task_tags(tag);`,
+
+	// A tag's colour is decided once, when the first task takes the tag,
+	// and kept for as long as any task carries it, so tagging an old task
+	// never recolours the others. Working it out from the tasks each time
+	// did: the order of "first use" moved whenever an older task was tagged.
+	`CREATE TABLE tags (
+		tag    TEXT PRIMARY KEY,
+		colour INTEGER NOT NULL
+	);`,
 }
 
 func (s *Store) migrate(path string) error {

@@ -9,9 +9,9 @@ import (
 )
 
 // A tag is a group a task belongs to that is not a note: "house" for the
-// renovation, "career" for the move. It is nothing but the word, so there is
-// no table of tags to keep tidy; a tag exists while a task carries it and is
-// gone when the last one drops it.
+// renovation, "career" for the move. It is nothing but the word: a tag
+// exists while a task carries it and is gone when the last one drops it.
+// The only thing kept about a tag itself is its colour.
 
 // maxTagLength keeps a tag a badge rather than a title.
 const maxTagLength = 32
@@ -56,8 +56,22 @@ func normaliseTags(typed []string) ([]string, error) {
 	return out, nil
 }
 
-// setTags replaces a task's tags with ones already normalised.
+// setTags replaces a task's tags with ones already normalised. A tag no task
+// carries yet is given its colour here, before the task takes it.
 func setTags(tx *sql.Tx, id int64, tags []string) error {
+	var fresh []string
+	for _, tag := range tags {
+		var carried bool
+		if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM task_tags WHERE tag = ?)`, tag).Scan(&carried); err != nil {
+			return fmt.Errorf("tagging task %d: %w", id, err)
+		}
+		if !carried {
+			fresh = append(fresh, tag)
+		}
+	}
+	if err := place(tx, fresh); err != nil {
+		return fmt.Errorf("tagging task %d: %w", id, err)
+	}
 	if _, err := tx.Exec(`DELETE FROM task_tags WHERE task_id = ?`, id); err != nil {
 		return fmt.Errorf("tagging task %d: %w", id, err)
 	}
@@ -117,46 +131,106 @@ func (s *Store) Tags() ([]TagCount, error) {
 	rows, err := s.db.Query(`SELECT g.tag,
 		COUNT(*) FILTER (WHERE t.status = ?),
 		COUNT(*) FILTER (WHERE t.status = ?),
-		MIN(t.created_at)
-		FROM task_tags g JOIN tasks t ON t.id = g.task_id
-		GROUP BY g.tag ORDER BY MIN(t.created_at), g.tag`, string(StatusOpen), string(StatusDone))
+		COALESCE(c.colour, -1)
+		FROM task_tags g JOIN tasks t ON t.id = g.task_id LEFT JOIN tags c ON c.tag = g.tag
+		GROUP BY g.tag ORDER BY g.tag`, string(StatusOpen), string(StatusDone))
 	if err != nil {
 		return nil, fmt.Errorf("listing tags: %w", err)
 	}
 	defer rows.Close()
 	out := []TagCount{}
-	var first string
 	for rows.Next() {
 		var c TagCount
-		if err := rows.Scan(&c.Tag, &c.Open, &c.Done, &first); err != nil {
+		if err := rows.Scan(&c.Tag, &c.Open, &c.Done, &c.Colour); err != nil {
 			return nil, fmt.Errorf("listing tags: %w", err)
+		}
+		if c.Colour < 0 {
+			c.Colour = hashSlot(c.Tag)
 		}
 		out = append(out, c)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	colour(out)
-	sort.Slice(out, func(i, j int) bool { return out[i].Tag < out[j].Tag })
-	return out, nil
+	return out, rows.Err()
 }
 
-// colour gives each tag a colour, in the order the tags came into use. A
-// tag takes the colour its name hashes to when no earlier tag has it, and
-// the next free one otherwise, so tags are told apart up to the number of
-// colours there are, and a new tag never changes the colour of one already
-// in use. Hashing first means a tag's colour is usually the same on a fresh
+// place gives each of these tags, none of which any task carries yet, its
+// colour: the one its name hashes to when no tag in use has it, and the
+// next free one otherwise. Tags in use keep theirs, which is the point; a
+// tag that died out and is back is placed again, against what is in use
+// now. Hashing first means a tag's colour is usually the same on a fresh
 // database too.
-func colour(tags []TagCount) {
+func place(tx *sql.Tx, tags []string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	rows, err := tx.Query(`SELECT colour FROM tags WHERE tag IN (SELECT tag FROM task_tags)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 	taken := make([]bool, Colours)
-	for i := range tags {
-		h := fnv.New32a()
-		h.Write([]byte(tags[i].Tag))
-		slot := int(h.Sum32() % Colours)
+	for rows.Next() {
+		var slot int
+		if err := rows.Scan(&slot); err != nil {
+			return err
+		}
+		taken[((slot%Colours)+Colours)%Colours] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, tag := range tags {
+		slot := hashSlot(tag)
 		for probe := 0; probe < Colours && taken[slot]; probe++ {
 			slot = (slot + 1) % Colours
 		}
 		taken[slot] = true
-		tags[i].Colour = slot
+		if _, err := tx.Exec(`INSERT INTO tags (tag, colour) VALUES (?, ?)
+			ON CONFLICT (tag) DO UPDATE SET colour = excluded.colour`, tag, slot); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func hashSlot(tag string) int {
+	h := fnv.New32a()
+	h.Write([]byte(tag))
+	return int(h.Sum32() % Colours)
+}
+
+// colourTags places every tag in use that has no colour yet, which is the
+// tags from before colours were kept: once, in the order the tasks carrying
+// them were made, so what was on screen the day before stays put.
+func (s *Store) colourTags() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("colouring tags: %w", err)
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query(`SELECT g.tag FROM task_tags g JOIN tasks t ON t.id = g.task_id
+		WHERE g.tag NOT IN (SELECT tag FROM tags)
+		GROUP BY g.tag ORDER BY MIN(t.created_at), g.tag`)
+	if err != nil {
+		return fmt.Errorf("colouring tags: %w", err)
+	}
+	var missing []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			rows.Close()
+			return fmt.Errorf("colouring tags: %w", err)
+		}
+		missing = append(missing, tag)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("colouring tags: %w", err)
+	}
+	if err := place(tx, missing); err != nil {
+		return fmt.Errorf("colouring tags: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("colouring tags: %w", err)
+	}
+	return nil
 }

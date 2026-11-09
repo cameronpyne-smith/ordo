@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 )
 
@@ -128,4 +129,84 @@ func TestTagsGetDistinctColours(t *testing.T) {
 		}
 		seen[c.Colour] = true
 	}
+}
+
+// Tagging a task made before the tags were is what moved colours about when
+// they were worked out from the tasks: a tag is coloured once, when the
+// first task takes it, and keeps that while any task carries it.
+func TestColoursStayPutWhileATagIsCarried(t *testing.T) {
+	fixedNow(t, "2026-09-01T09:00:00Z")
+	st := open(t)
+	old := create(t, st, &Task{Title: "An old task"})
+	fixedNow(t, "2026-09-20T09:00:00Z")
+	create(t, st, &Task{Title: "Rent", Tags: []string{"rent"}})
+	fixedNow(t, "2026-09-21T09:00:00Z")
+	quant := create(t, st, &Task{Title: "Quant", Tags: []string{"quant"}})
+	before := colourMap(t, st)
+
+	goal := []string{"goal"}
+	if _, err := st.Edit(old.ID, Edit{Tags: &goal}); err != nil {
+		t.Fatal(err)
+	}
+	after := colourMap(t, st)
+	if after["rent"] != before["rent"] || after["quant"] != before["quant"] {
+		t.Fatalf("tagging an older task recoloured the others: %v then %v", before, after)
+	}
+	if after["goal"] == after["rent"] || after["goal"] == after["quant"] {
+		t.Fatalf("goal shares a colour: %v", after)
+	}
+
+	// A second task taking a tag, and the first dropping it, change nothing.
+	both := []string{"goal", "quant"}
+	if _, err := st.Edit(quant.ID, Edit{Tags: &both}); err != nil {
+		t.Fatal(err)
+	}
+	none := []string{}
+	if _, err := st.Edit(old.ID, Edit{Tags: &none}); err != nil {
+		t.Fatal(err)
+	}
+	if again := colourMap(t, st); again["goal"] != after["goal"] || again["quant"] != after["quant"] {
+		t.Fatalf("moving a tag between tasks recoloured it: %v then %v", after, again)
+	}
+}
+
+// Tags from before colours were kept are placed when the store opens, in
+// the order their tasks were made, which is the order they had before.
+func TestOlderTagsAreColouredOnOpen(t *testing.T) {
+	fixedNow(t, "2026-09-20T09:00:00Z")
+	path := filepath.Join(t.TempDir(), "ordo.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	create(t, st, &Task{Title: "Rent", Tags: []string{"rent"}})
+	fixedNow(t, "2026-09-21T09:00:00Z")
+	create(t, st, &Task{Title: "Quant", Tags: []string{"quant"}})
+	before := colourMap(t, st)
+	if _, err := st.db.Exec(`DELETE FROM tags`); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if after := colourMap(t, st); fmt.Sprint(after) != fmt.Sprint(before) {
+		t.Fatalf("colours on reopening = %v, want %v", after, before)
+	}
+}
+
+func colourMap(t *testing.T, st *Store) map[string]int {
+	t.Helper()
+	tags, err := st.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]int{}
+	for _, c := range tags {
+		out[c.Tag] = c.Colour
+	}
+	return out
 }
